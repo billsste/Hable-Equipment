@@ -24,7 +24,7 @@ services:
         condition: service_healthy
     # Bind to loopback only — Cloudflare + Nginx are the sole public entry point.
     ports:
-      - "127.0.0.1:3700:3000"
+      - "127.0.0.1:4200:3000"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://equip:${DB_PASSWORD:-localdevpassword}@db:5432/equip_dispatch

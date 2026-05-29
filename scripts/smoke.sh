@@ -7,7 +7,7 @@
 
 set -uo pipefail
 
-BASE_URL="${SMOKE_BASE_URL:-http://localhost:3700}"
+BASE_URL="${SMOKE_BASE_URL:-http://localhost:4200}"
 EMAIL="${SMOKE_EMAIL:-stee@equipdispatch.com}"
 PASSWORD="${SMOKE_PASSWORD:-Admin123!}"
 

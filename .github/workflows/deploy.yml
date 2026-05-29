@@ -93,4 +93,4 @@ jobs:
             scripts/smoke.sh root@"$SERVER_HOST":/tmp/ed-smoke.sh
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             root@"$SERVER_HOST" \
-            "SMOKE_BASE_URL=http://localhost:3700 bash /tmp/ed-smoke.sh; rc=\$?; rm -f /tmp/ed-smoke.sh; exit \$rc"
+            "SMOKE_BASE_URL=http://localhost:4200 bash /tmp/ed-smoke.sh; rc=\$?; rm -f /tmp/ed-smoke.sh; exit \$rc"
