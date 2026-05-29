@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: equip_dispatch
+      POSTGRES_USER: equip
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-localdevpassword}
+    volumes:
+      - equip_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U equip"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ${APP_IMAGE:-hable-equipment-local}
+    build:
+      context: .
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    # Bind to loopback only — Cloudflare + Nginx are the sole public entry point.
+    ports:
+      - "127.0.0.1:3700:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://equip:${DB_PASSWORD:-localdevpassword}@db:5432/equip_dispatch
+      # Required in production (lib/auth.ts throws if unset / <16 chars).
+      AUTH_SECRET: ${AUTH_SECRET}
+      # STEE_SUPPORT_* intentionally omitted — the app has correct
+      # admin.stee-suite.com defaults baked in. Add here only to override.
+
+volumes:
+  equip_pgdata:

@@ -1,0 +1,96 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/billsste/hable-equipment
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          build-args: |
+            CACHEBUST=${{ github.sha }}
+          no-cache: true
+
+      - name: Pull image to runner
+        run: docker pull ${{ env.IMAGE }}:latest
+
+      - name: Deploy to server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            docker-compose.yml root@"$SERVER_HOST":/opt/apps/hable-equipment/docker-compose.yml
+          docker save ${{ env.IMAGE }}:latest | \
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@"$SERVER_HOST" \
+            "docker load && cd /opt/apps/hable-equipment && docker compose up -d --force-recreate app && docker image prune -f && echo 'Deploy complete'"
+
+      # Apply Prisma schema *after* the new container is running. Runs inside
+      # the container so it picks up DATABASE_URL from docker-compose env.
+      # If this fails the app container is still up — we just see the error
+      # here and can retry manually. Uses a heredoc to avoid nested-quoting issues.
+      - name: Apply Prisma schema
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@"$SERVER_HOST" bash <<'REMOTE'
+          set -e
+          cd /opt/apps/hable-equipment
+          echo "Waiting for app container to settle..."
+          sleep 5
+          # </dev/null on the docker compose exec — without it, the exec'd
+          # process inherits the heredoc and consumes the rest of the script,
+          # silently skipping every step after the first.
+          echo "Applying schema via prisma db push..."
+          docker compose exec -T app npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss </dev/null
+          echo "Schema applied successfully."
+          REMOTE
+
+      # Smoke against localhost on the droplet to skip Cloudflare's bot challenge
+      # (GHA runner IPs get blocked at the edge).
+      - name: Post-deploy smoke test
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            scripts/smoke.sh root@"$SERVER_HOST":/tmp/ed-smoke.sh
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            root@"$SERVER_HOST" \
+            "SMOKE_BASE_URL=http://localhost:3700 bash /tmp/ed-smoke.sh; rc=\$?; rm -f /tmp/ed-smoke.sh; exit \$rc"

@@ -1,0 +1,395 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  name            String
+  email           String    @unique
+  password        String
+  role            UserRole
+  roles           String[]  @default([])
+  active          Boolean   @default(true)
+  createdTickets  Ticket[]  @relation("CreatedBy")
+  assignedTickets Ticket[]  @relation("AssignedTo")
+  csrOrders       Order[]   @relation("OrderCsr")
+  dispatcherOrders Order[]  @relation("OrderDispatcher")
+  intakeOrders    Order[]   @relation("OrderIntakeBy")
+}
+
+enum UserRole {
+  supplier
+  dispatcher
+  csr
+}
+
+model Facility {
+  id       Int      @id @default(autoincrement())
+  name     String
+  initials String   @default("")
+  active   Boolean  @default(true)
+  address  String   @default("")
+  city     String   @default("")
+  state    String   @default("MI")
+  zip      String   @default("")
+  phone    String?
+  contact  String?
+  facilityType String? // SNF | ALF | PhysicianGroup | HomeHealth | Hospital | Other (open question for client)
+  tickets  Ticket[]
+  orders   Order[]
+}
+
+model Ticket {
+  id             String        @id @default(cuid())
+  facilityId     Int
+  facility       Facility      @relation(fields: [facilityId], references: [id])
+  patientName    String
+  room           String
+  product        String
+  serialNumber   String        @default("")
+  orderType      OrderType     @default(rent)
+  orderedBy      String
+  orderedByEmail String        @default("")
+  orderTime      DateTime      @default(now())
+  notes          String        @default("")
+  status         OrderStatus   @default(NEW)
+  source         TicketSource  @default(internal)
+  createdById    Int?
+  createdBy      User?         @relation("CreatedBy", fields: [createdById], references: [id])
+  driverId       Int?
+  driver         User?         @relation("AssignedTo", fields: [driverId], references: [id])
+  assignedAt     DateTime?
+  inTransitAt    DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime      @default(now())
+  auditEntries   TicketAudit[]
+}
+
+enum OrderStatus {
+  NEW
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderType {
+  rent
+  buy
+}
+
+enum TicketSource {
+  internal
+  external
+}
+
+model TicketAudit {
+  id       String   @id @default(cuid())
+  ticketId String
+  ticket   Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ts       DateTime @default(now())
+  who      String
+  action   String
+}
+
+model InventoryItem {
+  id       String       @id @default(cuid())
+  product  String
+  category String
+  serials  SerialItem[]
+}
+
+model SerialItem {
+  id          String        @id @default(cuid())
+  inventoryId String
+  inventory   InventoryItem @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  sn          String        @unique
+  location    String        @default("Warehouse")
+  status      SerialStatus  @default(available)
+}
+
+enum SerialStatus {
+  available
+  deployed
+}
+
+model AuditEntry {
+  id     String   @id @default(cuid())
+  ts     DateTime @default(now())
+  who    String
+  role   String
+  action String
+  detail String
+  ref    String
+}
+
+// ─── Revamp models (additive) ─────────────────────────────────────────────────
+
+// Stage = where the order is in the lifecycle. Status is DERIVED from
+// timestamps + populated fields, never picked manually.
+enum WorkOrderType {
+  DELIVERY
+  SERVICE_CALL
+  PICK_UP
+  EQUIPMENT_MOVE
+  EXCHANGE
+  FACILITY_DELIVERY
+  ELDERCARE
+  SERVICE_PICKUP
+}
+
+enum OrderStage {
+  INTAKE_OFF_RIP        // 1a — 5 fields captured, awaiting verification
+  INTAKE_VERIFICATION   // 1b — gathering missing info / auth
+  READY_TO_ASSIGN       // 2  — all required info present, awaiting dispatcher
+  ASSIGNED              // 3  — dispatcher assigned + ticket printed
+  ACKNOWLEDGED          // 4  — dispatcher acknowledged the assignment
+  OUT_FOR_DELIVERY      // 5  — dispatcher en route
+  DOOR_TAG              // 5b — attempted, no one home; awaiting re-attempt
+  DELIVERED             // 6  — confirmed delivered
+  CANCELLED             // terminal (kill switch)
+}
+
+enum AuthStatus {
+  NOT_REQ
+  REQUIRED
+  READY_TO_SUBMIT
+  PENDING_SIGNATURE
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  DENIED
+}
+
+enum DataEntryStatus {
+  NOT_STARTED
+  PT
+  CLINICAL
+  INS
+  DT
+  SERIAL
+  ENTRY_COMPLETE
+  ENTERED_FOR_WRITE_OFF
+}
+
+enum BillingStatus {
+  PENDING
+  CLAIM_DROPPED
+  DEDUCT_HOLD
+  WROTE_OFF
+}
+
+enum DeductibleStatus {
+  MET
+  NOT_MET
+  NA
+}
+
+enum HandlerType {
+  INTERNAL
+  REP
+  FACILITY
+}
+
+enum PlanType {
+  HMO
+  HMO_POS
+  PPO
+}
+
+enum OutcomeStatus {
+  ACTIVE
+  ON_HOLD
+  LOOSE_ENDS
+  TRANSFERRED
+  REJECTED
+  CANCELLED
+  DELIVERED
+  WRITE_OFF
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  // Display handle: ED-{yyyy}-{6-digit seq}, generated server-side
+  orderNumber     String      @unique
+  stage           OrderStage  @default(INTAKE_OFF_RIP)
+  workOrderType   WorkOrderType @default(DELIVERY)
+  linkedOrderId   String?
+  linkedOrder     Order?      @relation("OrderLink", fields: [linkedOrderId], references: [id])
+  linkedOrders    Order[]     @relation("OrderLink")
+
+  // ── 1a Off-Rip Intake (5 fields) ──
+  csrId           Int?
+  csr             User?       @relation("OrderCsr", fields: [csrId], references: [id])
+  patientFirst    String      @default("")
+  patientLast     String      @default("")
+  facilityId      Int?
+  facility        Facility?   @relation(fields: [facilityId], references: [id])
+  whatsNeeded     String[]    @default([]) // multi-select keys, e.g., ["DX","SIG"]
+
+  // ── 1b Verification ──
+  primaryInsuranceKey   String?  // FK by key into InsuranceOption
+  secondaryInsuranceKey String?
+  deductibleStatus      DeductibleStatus?
+  coinsurancePct        Int?              // patient coinsurance share, whole percent (e.g. 20, 35)
+  deductibleAmount      Decimal?  @db.Decimal(10, 2)  // patient deductible owed, dollars
+  planMemberId          String?           // member/plan ID (e.g. 10183281800) — identifier, kept as string
+  planName              String?           // full plan name (e.g. "HAP Medicare Superior (HMO) Individual Plan 028")
+  planType              PlanType?         // plan category — HMO, HMO/POS, PPO
+  authStatus            AuthStatus  @default(NOT_REQ)
+  authRequiredAt        DateTime?
+  authSubmittedAt       DateTime?
+  authApprovedAt        DateTime?
+  authDeniedAt          DateTime?
+  dosSubmitted          DateTime?
+  dataEntryStatus       DataEntryStatus?
+  billingStatus         BillingStatus?
+
+  fulfillmentCompanies  String[] @default([]) // multi-select keys (real fulfillment companies only)
+  status                OutcomeStatus @default(ACTIVE) // outcome state — ACTIVE | ON_HOLD | TRANSFERRED | REJECTED | CANCELLED | DELIVERED | WRITE_OFF
+  handler               HandlerType? // future split
+
+  // ── Dates ──
+  callReceivedDate      DateTime?
+  dischargeDate         DateTime? // DC Date — most workflow-critical
+  requestedDeliveryDate DateTime? // Facility/family requested target — drives dispatcher routing
+  // Order Date = createdAt (auto-stamped, never user-entered)
+
+  // ── Stage 2/3/4/5 ──
+  dispatcherId    Int?
+  dispatcher      User?       @relation("OrderDispatcher", fields: [dispatcherId], references: [id])
+  printedAt       DateTime?
+  acknowledgedAt  DateTime?
+  outForDeliveryAt DateTime?
+  doorTaggedAt    DateTime?
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  cancellationReason String?
+
+  // Item Type derived from Equipment categories — no field stored.
+  // Equipment + accessories live in OrderItem.
+
+  notes           String      @default("")
+  createdById     Int?
+  createdBy       User?       @relation("OrderIntakeBy", fields: [createdById], references: [id])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items           OrderItem[]
+  history         OrderEvent[]
+
+  @@index([stage])
+  @@index([dispatcherId])
+  @@index([csrId])
+  @@index([dischargeDate])
+  @@index([workOrderType])
+  @@index([linkedOrderId])
+}
+
+model OrderItem {
+  id          String    @id @default(cuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+  quantity    Int       @default(1)
+}
+
+model OrderEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ts        DateTime @default(now())
+  who       String
+  action    String
+  detail    String   @default("")
+}
+
+enum EquipmentKind {
+  item
+  accessory
+}
+
+model Equipment {
+  id           String        @id @default(cuid())
+  category     String        // Wheelchair | Walker/Mobility | Bed | Bath/Commode | Respiratory | Lift | Misc
+  name         String        // Human-readable label (e.g., "Hospital Bed")
+  abbreviation String        @default("") // e.g., "HSB"
+  hcpcsCode    String        @default("") // e.g., "K0001"
+  kind         EquipmentKind @default(item)
+  active       Boolean       @default(true)
+  sortOrder    Int           @default(0)
+  color        String?
+  parLevel     Int?          // Minimum on-hand stock level (from client par sheet)
+  orderItems   OrderItem[]
+
+  @@index([category, active])
+  @@index([kind, active])
+}
+
+// Generic admin-managed lookup tables. Same shape (key/label/active/sortOrder/color)
+// per locked-in pattern across What's Needed, Insurance, Item Types, Companies.
+
+model WhatsNeededOption {
+  id        String  @id @default(cuid())
+  key       String  @unique // immutable (DX, SIG, FS, ...) — referenced by conditionality rules
+  label     String         // editable display
+  color     String?
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+}
+
+model InsuranceOption {
+  id           String  @id @default(cuid())
+  key          String  @unique // immutable
+  label        String
+  coverageType String? // future split: Medicare|Medicaid|Commercial|Auto|WorkersComp|VA|PrivatePay|Other
+  planVariant  String? // future split: HMO|PPO|Advantage|...
+  accepted     Boolean @default(true)
+  color        String?
+  sortOrder    Int     @default(0)
+  active       Boolean @default(true)
+}
+
+model FulfillmentCompany {
+  id        String  @id @default(cuid())
+  key       String  @unique
+  label     String
+  color     String?
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+}
+
+model ItemTypeOption {
+  id        String  @id @default(cuid())
+  key       String  @unique
+  label     String
+  color     String?
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+}
+
+model CancellationReason {
+  id        String  @id @default(cuid())
+  key       String  @unique
+  label     String
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+}
+
+model OrderSequence {
+  year    Int @id
+  lastSeq Int @default(0)
+}
+
+model LoginAttempt {
+  emailKey    String    @id
+  count       Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+}
