@@ -16,6 +16,13 @@ COPY . .
 # a prior build even when schema.prisma content changed.
 ARG CACHEBUST=unset
 RUN echo "CACHEBUST=$CACHEBUST" && rm -rf node_modules/.prisma && npx prisma generate
+# `next build` collects page data by importing every route module, which
+# instantiates the Prisma client (lib/db.ts throws if DATABASE_URL is unset).
+# No DB connection is made during the build — all DB routes are dynamic — so a
+# throwaway URL just satisfies the module-load guard. The real DATABASE_URL is
+# injected at runtime via docker-compose env; this value is confined to the
+# builder stage and never reaches the runner image.
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 RUN npm run build
 
 FROM base AS runner
