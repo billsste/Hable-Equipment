@@ -471,7 +471,7 @@ export default function OrderForm(props: Props) {
           </button>
         </div>
 
-        {!isCreate && <Stepper step={step} onChange={setStep} />}
+        <Stepper step={step} onChange={setStep} />
 
         <div
           className="flex-1 overflow-y-auto px-4 py-3 md:px-5 md:py-3 space-y-3"
@@ -492,7 +492,7 @@ export default function OrderForm(props: Props) {
             </div>
           )}
 
-          {(isCreate || step === 1) && (
+          {step === 1 && (
             <Section
               title="Stage 1 — Initial Intake"
               subtitle="The details captured the moment a referral call comes in."
@@ -574,7 +574,7 @@ export default function OrderForm(props: Props) {
             </Section>
           )}
 
-          {(isCreate || step === 2) && (
+          {step === 2 && (
             <Section
               title="Stage 2 — Verification"
               subtitle="Insurance, deductible, authorization, and any items still needed before dispatch."
@@ -723,7 +723,7 @@ export default function OrderForm(props: Props) {
             </Section>
           )}
 
-          {(isCreate || step === 3) && (
+          {step === 3 && (
             <Section
               title="Stage 3 — Fulfillment & Dispatch"
               subtitle="Review the order, assign a dispatcher, set the schedule, then flag the outcome."

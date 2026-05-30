@@ -200,12 +200,15 @@ async function main() {
   console.log(`Seeded ${equipCount} equipment items`);
 
   // ── Sample orders so the tracker isn't empty for client demo ──
-  // Skipped on production (SEED_DEMO_ORDERS unset) so prod starts with a clean
-  // tracker — only users + reference/config data are seeded there.
-  if (process.env.SEED_DEMO_ORDERS === "1") {
-    await seedDemoOrders();
+  // Skipped by default (clean prod). Set SEED_DEMO_ORDERS=1 for the full local
+  // dataset, or SEED_DEMO_ORDER_LIMIT=N for a small curated demo set (prod).
+  const demoLimit = process.env.SEED_DEMO_ORDER_LIMIT
+    ? Math.max(0, Number.parseInt(process.env.SEED_DEMO_ORDER_LIMIT, 10) || 0)
+    : undefined;
+  if (process.env.SEED_DEMO_ORDERS === "1" || demoLimit) {
+    await seedDemoOrders(demoLimit);
   } else {
-    console.log("Skipping demo orders (set SEED_DEMO_ORDERS=1 to include them).");
+    console.log("Skipping demo orders (set SEED_DEMO_ORDERS=1 or SEED_DEMO_ORDER_LIMIT=N).");
   }
 
   console.log("Done.");
@@ -225,7 +228,7 @@ function keyFor(category: string, name: string): string {
   return `${category}::${name}`.toLowerCase().replace(/[^a-z0-9:]+/g, "-");
 }
 
-async function seedDemoOrders() {
+async function seedDemoOrders(limit?: number) {
   const csrs = await db.user.findMany({ where: { roles: { has: "csr" } } });
   const dispatchers = await db.user.findMany({ where: { roles: { has: "dispatcher" } } });
   const facilities = await db.facility.findMany();
@@ -338,6 +341,10 @@ async function seedDemoOrders() {
     { stage: "DELIVERED", patientFirst: "Dorothy", patientLast: "Rivera", facilityIdx: 3, csrIdx: 3, primary: "MCARE", deductible: "MET", auth: "APPROVED", dcDays: -114, companies: ["SHAN"], dispatcherIdx: 3, items: ["ELECLIFT", "SLINGM"], daysAgo: 116 },
   ];
 
+  // Full procedural backfill (12 months × category coverage) only runs when no
+  // explicit limit is given. With a limit (prod demo data) we use just the
+  // curated lifecycle samples above and slice to the requested count.
+  if (limit === undefined) {
   const FIRST_NAMES = [
     "John", "Mary", "Robert", "Patricia", "Michael", "Jennifer", "William", "Linda",
     "David", "Elizabeth", "Richard", "Barbara", "Joseph", "Susan", "Thomas", "Jessica",
@@ -500,9 +507,11 @@ async function seedDemoOrders() {
       }
     }
   }
+  }
 
+  const seedSet = limit === undefined ? demos : demos.slice(0, limit);
   await Promise.all(
-    demos.map((d) => {
+    seedSet.map((d) => {
       const stage = d.stage;
       const orderNumber = nextOrderNumber();
       const csr = csrs[d.csrIdx % csrs.length];
@@ -566,7 +575,7 @@ async function seedDemoOrders() {
       });
     }),
   );
-  console.log(`Seeded ${demos.length} demo orders across the lifecycle`);
+  console.log(`Seeded ${seedSet.length} demo orders across the lifecycle`);
 }
 
 main()
