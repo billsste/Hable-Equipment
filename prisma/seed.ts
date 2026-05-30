@@ -200,7 +200,13 @@ async function main() {
   console.log(`Seeded ${equipCount} equipment items`);
 
   // ── Sample orders so the tracker isn't empty for client demo ──
-  await seedDemoOrders();
+  // Skipped on production (SEED_DEMO_ORDERS unset) so prod starts with a clean
+  // tracker — only users + reference/config data are seeded there.
+  if (process.env.SEED_DEMO_ORDERS === "1") {
+    await seedDemoOrders();
+  } else {
+    console.log("Skipping demo orders (set SEED_DEMO_ORDERS=1 to include them).");
+  }
 
   console.log("Done.");
 }
