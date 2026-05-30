@@ -3,8 +3,7 @@ import type { SerialStatus } from "@prisma/client";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-
-const VALID_STATUSES: SerialStatus[] = ["available", "deployed", "in_service", "out_of_service", "retired"];
+import { applyStatusTransition, isValidStatus } from "@/lib/serials";
 
 const LOC_MAX = 80;
 const NOTES_MAX = 500;
@@ -50,25 +49,16 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     }
   }
 
+  // Build the write patch. Status transitions go through the domain helper
+  // (lib/serials.ts) so timestamp + FK side effects stay in one place; the
+  // route itself only handles the field-level inputs the caller controls
+  // directly (location / notes / explicit orderId).
   const data: Record<string, unknown> = {};
   if (body.status !== undefined) {
-    if (!VALID_STATUSES.includes(body.status)) {
+    if (!isValidStatus(body.status)) {
       return NextResponse.json({ error: "Invalid status." }, { status: 400 });
     }
-    data.status = body.status;
-    if (body.status === "deployed" && !existing.deployedAt) data.deployedAt = new Date();
-    if (body.status === "retired" && !existing.retiredAt) data.retiredAt = new Date();
-    if (body.status === "available") {
-      data.deployedAt = null;
-      data.retiredAt = null;
-      data.orderId = null;
-    }
-    // A serial moved to retired or out_of_service is no longer with the
-    // customer it was deployed to — clear the FK so order↔serial joins stay
-    // honest and the par-level "deployed" count doesn't double-count.
-    if (body.status === "retired" || body.status === "out_of_service") {
-      data.orderId = null;
-    }
+    Object.assign(data, applyStatusTransition(existing, body.status));
   }
   if (body.location !== undefined) data.location = body.location.slice(0, LOC_MAX);
   if (body.notes !== undefined) data.notes = body.notes.slice(0, NOTES_MAX);

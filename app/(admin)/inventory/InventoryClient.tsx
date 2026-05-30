@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import type { SerialStatus } from "@prisma/client";
-import { AlertTriangle, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { Muted, SearchInput, Td, Th } from "@/components/admin-ui";
+import { Combobox } from "@/components/combobox";
 
 export type EquipmentRow = {
   id: string;
@@ -143,13 +145,13 @@ export default function InventoryClient({ currentUser, equipment, initialSerials
         <SearchInput value={search} onChange={setSearch} placeholder={tab === "stock" ? "Search equipment..." : "Search SN / equipment / location..."} />
         {tab === "serials" && (
           <>
-            <FilterSelect
+            <Combobox
               value={equipmentFilter}
               onChange={setEquipmentFilter}
               placeholder="All equipment"
               options={equipment.map((e) => ({ value: e.id, label: e.name }))}
             />
-            <FilterSelect
+            <Combobox
               value={statusFilter}
               onChange={(v) => setStatusFilter(v as SerialStatus | "")}
               placeholder="All status"
@@ -200,54 +202,6 @@ function TabButton({ active, onClick, label, count }: { active: boolean; onClick
       <span>{label}</span>
       <span style={{ marginLeft: 8, color: active ? "#4434d4" : "#94a3b8", fontWeight: 500, fontFeatureSettings: '"tnum"' }}>{count}</span>
     </button>
-  );
-}
-
-function SearchInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, flex: 1, minWidth: 240, maxWidth: 360 }}>
-      <Search size={14} style={{ color: "#94a3b8", flexShrink: 0 }} />
-      <input
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ flex: 1, outline: "none", fontSize: 13, background: "transparent", color: "#061b31", border: 0 }}
-      />
-    </div>
-  );
-}
-
-function FilterSelect({ value, onChange, placeholder, options }: { value: string; onChange: (v: string) => void; placeholder: string; options: { value: string; label: string }[] }) {
-  // For consistency with the Tracker's combobox we'd use Command/Popover, but
-  // this short list works fine as a native select within the 5-option rule
-  // when filtered. We keep it simple here because the option counts are small.
-  return (
-    <div style={{ position: "relative" }}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          padding: "6px 28px 6px 10px", fontSize: 13,
-          background: value ? "rgba(83,58,253,0.08)" : "#ffffff",
-          color: value ? "#4434d4" : "#273951",
-          border: `1px solid ${value ? "rgba(83,58,253,0.20)" : "#e5edf5"}`,
-          borderRadius: 4, appearance: "none", minWidth: 170,
-        }}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "transparent", border: 0, color: "#4434d4", padding: 0, lineHeight: 0, cursor: "pointer" }}
-          title="Clear"
-        >
-          <X size={12} />
-        </button>
-      )}
-    </div>
   );
 }
 
@@ -480,9 +434,16 @@ function AddSerialsModal({ equipment, onClose, onAdded }: {
         <p style={{ fontSize: 13, color: "#64748d", marginBottom: 16 }}>Paste one serial per line (or comma-separated). Duplicates are skipped.</p>
 
         <Label>Equipment</Label>
-        <select value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #e5edf5", borderRadius: 4, marginBottom: 12, background: "#fff", color: "#273951" }}>
-          {equipment.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.category})</option>)}
-        </select>
+        <div style={{ marginBottom: 12 }}>
+          <Combobox
+            value={equipmentId}
+            onChange={setEquipmentId}
+            placeholder="Search equipment…"
+            options={equipment.map((e) => ({ value: e.id, label: `${e.name} (${e.category})` }))}
+            clearable={false}
+            width="100%"
+          />
+        </div>
 
         <Label>Location</Label>
         <input
@@ -525,19 +486,6 @@ function AddSerialsModal({ equipment, onClose, onAdded }: {
   );
 }
 
-function Th({ children, right }: { children?: React.ReactNode; right?: boolean }) {
-  return (
-    <th style={{ textAlign: right ? "right" : "left", padding: "10px 12px", fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "#64748d", whiteSpace: "nowrap" }}>
-      {children}
-    </th>
-  );
-}
-function Td({ children, right }: { children: React.ReactNode; right?: boolean }) {
-  return <td style={{ padding: "10px 12px", verticalAlign: "middle", textAlign: right ? "right" : "left" }}>{children}</td>;
-}
-function Muted({ children }: { children: React.ReactNode }) {
-  return <span style={{ color: "#94a3b8" }}>{children}</span>;
-}
 function Label({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 11, color: "#64748d", marginBottom: 4, fontWeight: 500 }}>{children}</div>;
 }

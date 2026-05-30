@@ -10,19 +10,22 @@ const DEMO_ACCOUNTS = [
   { label: "Gabe (CSR + Disp)",  email: "gabe@equipdispatch.com",    password: "Equip2026!", role: "csr"        },
 ];
 
+// Login is a two-step machine: collect password → if server says
+// mfaRequired, collect TOTP/backup. A tagged union per step keeps the
+// password fields, mfa-code fields, and mode toggle (totp vs backup) in
+// exactly one place; the inputs they imply can't exist without their step.
+type Step =
+  | { kind: "password"; email: string; password: string }
+  | { kind: "mfa"; email: string; mode: "totp" | "backup"; token: string; backup: string };
+
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [step, setStep] = useState<Step>({ kind: "password", email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  // MFA step state. mfaStep=true means password verified, awaiting TOTP.
-  const [mfaStep, setMfaStep] = useState(false);
-  const [mfaToken, setMfaToken] = useState("");
-  const [useBackup, setUseBackup] = useState(false);
-  const [mfaBackup, setMfaBackup] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (step.kind !== "password") return;
     setError("");
     setLoading(true);
     try {
@@ -30,7 +33,7 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: step.email, password: step.password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -39,9 +42,9 @@ export default function LoginPage() {
         return;
       }
       // MFA path: server set a short-lived challenge cookie instead of a
-      // session. Swap to the TOTP form and don't bounce to /tracker yet.
+      // session. Swap state to the mfa step; don't bounce to /tracker yet.
       if (data.mfaRequired) {
-        setMfaStep(true);
+        setStep({ kind: "mfa", email: step.email, mode: "totp", token: "", backup: "" });
         setLoading(false);
         return;
       }
@@ -61,14 +64,13 @@ export default function LoginPage() {
     }
   }
 
-  async function handleMfa(e: React.FormEvent) {
+  async function handleMfaSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (step.kind !== "mfa") return;
     setError("");
     setLoading(true);
     try {
-      const body = useBackup
-        ? { backupCode: mfaBackup }
-        : { token: mfaToken };
+      const body = step.mode === "backup" ? { backupCode: step.backup } : { token: step.token };
       const res = await fetch("/api/auth/mfa/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,10 +91,25 @@ export default function LoginPage() {
   }
 
   function fillDemo(acc: typeof DEMO_ACCOUNTS[0]) {
-    setEmail(acc.email);
-    setPassword(acc.password);
+    setStep({ kind: "password", email: acc.email, password: acc.password });
     setError("");
   }
+
+  function toggleMfaMode() {
+    if (step.kind !== "mfa") return;
+    setStep({ ...step, mode: step.mode === "totp" ? "backup" : "totp" });
+    setError("");
+  }
+
+  function cancelMfa() {
+    if (step.kind !== "mfa") return;
+    // Preserve the email so the user doesn't have to retype it on retry.
+    setStep({ kind: "password", email: step.email, password: "" });
+    setError("");
+  }
+
+  const onMfaStep = step.kind === "mfa";
+  const mfaMode = step.kind === "mfa" ? step.mode : "totp";
 
   return (
     <div
@@ -200,11 +217,11 @@ export default function LoginPage() {
                 letterSpacing: "-0.32px",
               }}
             >
-              {mfaStep ? "Two-factor code" : "Welcome back"}
+              {onMfaStep ? "Two-factor code" : "Welcome back"}
             </h1>
             <p className="mb-6 text-[13px]" style={{ color: "#64748d", lineHeight: "20px" }}>
-              {mfaStep
-                ? (useBackup
+              {onMfaStep
+                ? (mfaMode === "backup"
                     ? "Enter one of your one-time backup codes."
                     : "Enter the 6-digit code from your authenticator app.")
                 : "Sign in to review equipment requests, dispatch deliveries, and confirm completion."}
@@ -224,16 +241,16 @@ export default function LoginPage() {
               </div>
             )}
 
-            {!mfaStep ? (
-              <form onSubmit={handleSubmit} className="space-y-3">
+            {step.kind === "password" && (
+              <form onSubmit={handlePasswordSubmit} className="space-y-3">
                 <div>
                   <label className="mb-1.5 block text-[12px]" style={{ color: "#273951", fontWeight: 500 }}>
                     Email address
                   </label>
                   <input
                     type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={step.email}
+                    onChange={(e) => setStep({ ...step, email: e.target.value })}
                     required
                     placeholder="name@facility.org"
                     className="w-full px-3 py-2 text-[13px] outline-none"
@@ -253,8 +270,8 @@ export default function LoginPage() {
                   </label>
                   <input
                     type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    value={step.password}
+                    onChange={(e) => setStep({ ...step, password: e.target.value })}
                     required
                     placeholder="••••••••"
                     className="w-full px-3 py-2 text-[13px] outline-none"
@@ -284,9 +301,11 @@ export default function LoginPage() {
                   {loading ? "Signing in…" : "Sign in"}
                 </button>
               </form>
-            ) : (
-              <form onSubmit={handleMfa} className="space-y-3">
-                {useBackup ? (
+            )}
+
+            {step.kind === "mfa" && (
+              <form onSubmit={handleMfaSubmit} className="space-y-3">
+                {step.mode === "backup" ? (
                   <div>
                     <label className="mb-1.5 block text-[12px]" style={{ color: "#273951", fontWeight: 500 }}>
                       Backup code
@@ -294,8 +313,8 @@ export default function LoginPage() {
                     <input
                       type="text"
                       autoFocus
-                      value={mfaBackup}
-                      onChange={(e) => setMfaBackup(e.target.value.toUpperCase())}
+                      value={step.backup}
+                      onChange={(e) => setStep({ ...step, backup: e.target.value.toUpperCase() })}
                       required
                       placeholder="XXXX-XXXX"
                       className="w-full px-3 py-2 text-[14px] outline-none"
@@ -319,8 +338,8 @@ export default function LoginPage() {
                       pattern="\d*"
                       maxLength={6}
                       autoFocus
-                      value={mfaToken}
-                      onChange={(e) => setMfaToken(e.target.value.replace(/\D/g, ""))}
+                      value={step.token}
+                      onChange={(e) => setStep({ ...step, token: e.target.value.replace(/\D/g, "") })}
                       required
                       placeholder="123456"
                       className="w-full px-3 py-2 text-[18px] outline-none"
@@ -334,7 +353,7 @@ export default function LoginPage() {
                 )}
                 <button
                   type="submit"
-                  disabled={loading || (useBackup ? mfaBackup.length < 8 : mfaToken.length !== 6)}
+                  disabled={loading || (step.mode === "backup" ? step.backup.length < 8 : step.token.length !== 6)}
                   className="flex w-full items-center justify-center gap-2 py-2 text-[13px] text-white transition-colors disabled:opacity-60"
                   style={{ background: "#533afd", borderRadius: 4, fontWeight: 400 }}
                 >
@@ -344,14 +363,14 @@ export default function LoginPage() {
                 <div className="flex items-center justify-between pt-1 text-[12px]">
                   <button
                     type="button"
-                    onClick={() => { setUseBackup((v) => !v); setError(""); }}
+                    onClick={toggleMfaMode}
                     style={{ color: "#533afd", background: "transparent", border: 0, cursor: "pointer", padding: 0 }}
                   >
-                    {useBackup ? "Use authenticator code instead" : "Use a backup code instead"}
+                    {step.mode === "backup" ? "Use authenticator code instead" : "Use a backup code instead"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setMfaStep(false); setMfaToken(""); setMfaBackup(""); setUseBackup(false); setError(""); }}
+                    onClick={cancelMfa}
                     style={{ color: "#64748d", background: "transparent", border: 0, cursor: "pointer", padding: 0 }}
                   >
                     Cancel
@@ -360,42 +379,42 @@ export default function LoginPage() {
               </form>
             )}
 
-            {/* Demo accounts */}
-            {!mfaStep && (
-            <div className="mt-6 pt-5" style={{ borderTop: "1px solid #e5edf5" }}>
-              <div
-                className="mb-2.5 text-[10px] uppercase"
-                style={{ color: "#64748d", letterSpacing: "0.08em", fontWeight: 500 }}
-              >
-                Demo accounts
+            {/* Demo accounts — only on the password step. */}
+            {step.kind === "password" && (
+              <div className="mt-6 pt-5" style={{ borderTop: "1px solid #e5edf5" }}>
+                <div
+                  className="mb-2.5 text-[10px] uppercase"
+                  style={{ color: "#64748d", letterSpacing: "0.08em", fontWeight: 500 }}
+                >
+                  Demo accounts
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {DEMO_ACCOUNTS.map((acc) => (
+                    <button
+                      key={acc.email}
+                      onClick={() => fillDemo(acc)}
+                      className="px-3 py-2 text-left text-[12px] transition-colors"
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #e5edf5",
+                        borderRadius: 4,
+                        color: "#273951",
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background = "#f6f9fc";
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "#d6d9fc";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background = "#ffffff";
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "#e5edf5";
+                      }}
+                    >
+                      <div className="text-[13px]" style={{ color: "#061b31", fontWeight: 500 }}>{acc.label}</div>
+                      <div className="mt-0.5 truncate text-[11px]" style={{ color: "#64748d" }}>{acc.email}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {DEMO_ACCOUNTS.map((acc) => (
-                  <button
-                    key={acc.email}
-                    onClick={() => fillDemo(acc)}
-                    className="px-3 py-2 text-left text-[12px] transition-colors"
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #e5edf5",
-                      borderRadius: 4,
-                      color: "#273951",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background = "#f6f9fc";
-                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#d6d9fc";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background = "#ffffff";
-                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#e5edf5";
-                    }}
-                  >
-                    <div className="text-[13px]" style={{ color: "#061b31", fontWeight: 500 }}>{acc.label}</div>
-                    <div className="mt-0.5 truncate text-[11px]" style={{ color: "#64748d" }}>{acc.email}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
             )}
           </div>
         </div>

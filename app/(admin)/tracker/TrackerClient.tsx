@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AUTH_IN_FLIGHT,
   AUTH_LABELS,
@@ -14,7 +14,9 @@ import {
 } from "@/lib/order-types";
 import type { WorkOrderType } from "@prisma/client";
 import OrderForm from "./OrderForm";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Download, Plus, Printer, Search, X } from "lucide-react";
+import { Download, Plus, Printer } from "lucide-react";
+import { Muted, Pill, SearchInput, Td, Th, hexWithAlpha } from "@/components/admin-ui";
+import { Combobox } from "@/components/combobox";
 import { downloadCsv } from "@/lib/utils";
 
 export type Lookups = {
@@ -325,35 +327,11 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
 
       {/* Search + filters */}
       <div className="flex flex-wrap items-center gap-2 no-print" style={{ marginBottom: 12 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "6px 10px",
-            background: "#ffffff",
-            border: "1px solid #e5edf5",
-            borderRadius: 4,
-            flex: 1,
-            minWidth: 240,
-            maxWidth: 360,
-          }}
-        >
-          <Search size={14} style={{ color: "#94a3b8", flexShrink: 0 }} />
-          <input
-            placeholder="Search by patient, facility, order #..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              flex: 1,
-              outline: "none",
-              fontSize: 13,
-              background: "transparent",
-              color: "#061b31",
-              border: 0,
-            }}
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by patient, facility, order #..."
+        />
 
         <FilterSelect
           value={insuranceFilter}
@@ -540,44 +518,6 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   );
 }
 
-function Th({
-  children,
-  sortKey,
-  sort,
-  onSort,
-}: {
-  children: React.ReactNode;
-  sortKey?: SortKey;
-  sort?: { key: SortKey; dir: SortDir };
-  onSort?: (key: SortKey) => void;
-}) {
-  const sortable = !!sortKey && !!onSort;
-  const active = sortable && sort?.key === sortKey;
-  const Icon = active ? (sort?.dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
-  return (
-    <th
-      onClick={sortable ? () => onSort!(sortKey!) : undefined}
-      style={{
-        textAlign: "left",
-        padding: "10px 12px",
-        fontSize: 11,
-        fontWeight: 500,
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
-        color: active ? "#4434d4" : "#64748d",
-        whiteSpace: "nowrap",
-        cursor: sortable ? "pointer" : "default",
-        userSelect: "none",
-      }}
-    >
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-        {children}
-        {sortable && <Icon size={11} style={{ opacity: active ? 1 : 0.4 }} />}
-      </span>
-    </th>
-  );
-}
-
 function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
   const { dcInfo, stageColor, authAge, showAuthAge, dcBlocker } = deriveOrderDisplay(order);
 
@@ -710,14 +650,6 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
   );
 }
 
-function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td style={{ padding: "10px 12px", verticalAlign: "middle", overflow: "hidden" }}>
-      {children}
-    </td>
-  );
-}
-
 function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
   const { dcInfo, stageColor, authAge, showAuthAge, dcBlocker } = deriveOrderDisplay(order);
   return (
@@ -786,228 +718,9 @@ function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean
   );
 }
 
-function Pill({ label, bg, color }: { label: string; bg: string; color: string }) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        background: bg,
-        color,
-        fontSize: 11,
-        fontWeight: 500,
-        padding: "1px 6px",
-        borderRadius: 4,
-        border: `1px solid ${hexWithAlpha(color, 0.25)}`,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function Muted({ children }: { children: React.ReactNode }) {
-  return <span style={{ color: "#94a3b8" }}>{children}</span>;
-}
-
-function FilterSelect({
-  value,
-  onChange,
-  placeholder,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  options: Array<{ value: string; label: string }>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [highlight, setHighlight] = useState(0);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const active = value !== "";
-  const selectedLabel = active ? options.find((o) => o.value === value)?.label ?? "" : "";
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) => o.label.toLowerCase().includes(q));
-  }, [query, options]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  useEffect(() => {
-    setHighlight(0);
-  }, [query, open]);
-
-  function commit(v: string) {
-    onChange(v);
-    setOpen(false);
-    setQuery("");
-    inputRef.current?.blur();
-  }
-
-  return (
-    <div ref={wrapRef} style={{ position: "relative", width: 170 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "6px 8px 6px 10px",
-          fontSize: 13,
-          background: active ? "rgba(83,58,253,0.08)" : "#ffffff",
-          color: active ? "#4434d4" : "#273951",
-          border: `1px solid ${active ? "rgba(83,58,253,0.20)" : "#e5edf5"}`,
-          borderRadius: 4,
-          cursor: "text",
-        }}
-        onClick={() => {
-          inputRef.current?.focus();
-          setOpen(true);
-        }}
-      >
-        <input
-          ref={inputRef}
-          value={open ? query : selectedLabel}
-          placeholder={placeholder}
-          onFocus={(e) => {
-            setOpen(true);
-            e.target.select();
-          }}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setHighlight((h) => Math.min(filtered.length - 1, h + 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setHighlight((h) => Math.max(0, h - 1));
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              const opt = filtered[highlight];
-              if (opt) commit(opt.value);
-            } else if (e.key === "Escape") {
-              setOpen(false);
-              setQuery("");
-              inputRef.current?.blur();
-            }
-          }}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            outline: "none",
-            background: "transparent",
-            border: 0,
-            color: "inherit",
-            fontSize: 13,
-          }}
-        />
-        {active ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              commit("");
-            }}
-            style={{
-              flexShrink: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#4434d4",
-              background: "transparent",
-              border: 0,
-              padding: 0,
-              cursor: "pointer",
-            }}
-            title="Clear"
-          >
-            <X size={12} />
-          </button>
-        ) : (
-          <ChevronDown size={12} style={{ flexShrink: 0, color: "#94a3b8" }} />
-        )}
-      </div>
-
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: 0,
-            right: 0,
-            zIndex: 20,
-            background: "#ffffff",
-            border: "1px solid #e5edf5",
-            borderRadius: 4,
-            boxShadow: "rgba(23,23,23,0.12) 0px 6px 16px",
-            maxHeight: 240,
-            overflowY: "auto",
-            padding: 4,
-          }}
-        >
-          {filtered.length === 0 ? (
-            <div style={{ padding: "8px 10px", fontSize: 12, color: "#94a3b8" }}>No matches</div>
-          ) : (
-            filtered.map((o, i) => (
-              <button
-                key={o.value}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  commit(o.value);
-                }}
-                onMouseEnter={() => setHighlight(i)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "6px 8px",
-                  fontSize: 13,
-                  borderRadius: 3,
-                  background: i === highlight ? "rgba(83,58,253,0.08)" : "transparent",
-                  color: i === highlight ? "#4434d4" : "#273951",
-                  border: 0,
-                  cursor: "pointer",
-                }}
-              >
-                {o.label}
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function hexWithAlpha(color: string, alpha: number): string {
-  if (color.startsWith("rgba")) return color;
-  if (color.startsWith("rgb(")) {
-    return color.replace("rgb(", "rgba(").replace(")", `,${alpha})`);
-  }
-  const hex = color.replace("#", "");
-  if (hex.length !== 6) return color;
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+// TrackerClient used to ship a local FilterSelect that was the prototype for
+// components/combobox.tsx. The shared Combobox is now the single source.
+const FilterSelect = Combobox;
 
 function filterOrders(
   orders: OrderShape[],
