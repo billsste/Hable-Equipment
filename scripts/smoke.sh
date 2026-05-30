@@ -45,7 +45,7 @@ ME=$(curl -s -H "Cookie: $COOKIE" "$BASE_URL/api/me")
 echo "$ME" | grep -q "$EMAIL" && ok "/api/me resolves session" || fail "/api/me: $ME"
 
 # 4) Core authenticated pages render.
-for path in /tracker /reporting /configuration /users /audit /support; do
+for path in /tracker /reporting /configuration /users /audit-log /support; do
   CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Cookie: $COOKIE" "$BASE_URL$path")
   [ "$CODE" = "200" ] && ok "GET $path → 200" || fail "GET $path → $CODE"
 done

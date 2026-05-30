@@ -37,6 +37,9 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
+# prisma/seed.ts imports from ../lib (e.g. lib/facilities-data), so the runner
+# needs lib/ for `prisma db seed` / tsx-based provisioning to resolve.
+COPY --from=builder /app/lib ./lib
 COPY entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 EXPOSE 3000
