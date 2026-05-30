@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { equipStore } from "@/lib/equip-store";
+import { logAudit } from "@/lib/audit";
 
 // Stream a single attachment's bytes back to the caller. Returns the original
 // filename via Content-Disposition so the download dialog uses the right
@@ -35,16 +35,16 @@ export async function DELETE(request: Request, ctx: { params: Promise<{ id: stri
   const guard = await requireRole(request, ["supplier", "csr", "dispatcher"]);
   if ("error" in guard) return guard.error;
   const { id, attachmentId } = await ctx.params;
+  // Skip the bytea `data` column — we only need filename/orderNumber for the
+  // audit entry. Pulling the full attachment just to delete it could move
+  // 10 MB Postgres→Node for nothing.
   const row = await db.orderAttachment.findFirst({
     where: { id: attachmentId, orderId: id },
-    include: { order: { select: { orderNumber: true } } },
+    select: { id: true, filename: true, order: { select: { orderNumber: true } } },
   });
   if (!row) return NextResponse.json({ error: "Not found." }, { status: 404 });
   await db.orderAttachment.delete({ where: { id: row.id } });
-  await equipStore.addAuditEntry({
-    ts: new Date().toISOString(),
-    who: guard.user.name,
-    role: guard.user.role,
+  await logAudit(request, guard.user, {
     action: "Order attachment removed",
     detail: `${row.filename} removed from ${row.order.orderNumber}`,
     ref: row.order.orderNumber,

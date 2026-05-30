@@ -70,14 +70,21 @@ const VIEWS: { key: ViewKey; label: string; description: string }[] = [
 
 const VALID_VIEWS = new Set<ViewKey>(["all", "open", "ready", "out", "auth", "delivered"]);
 
-// Order Date presets shown next to the date inputs. "all" = no filter.
+// Order Date presets shown next to the date inputs. The "no filter" state is
+// represented by `datePreset === "all"` (the value FilterSelect uses for its
+// cleared option) — keeping it out of this list means every consumer renders
+// exactly the options that appear in the dropdown, plus the "custom" sentinel
+// appended once below in DATE_PRESET_OPTIONS.
 type DatePreset = "all" | "7d" | "30d" | "90d" | "ytd" | "custom";
-const DATE_PRESETS: { key: DatePreset; label: string }[] = [
-  { key: "all", label: "All time" },
+const DATE_PRESETS: { key: Exclude<DatePreset, "all" | "custom">; label: string }[] = [
   { key: "7d",  label: "Last 7 days" },
   { key: "30d", label: "Last 30 days" },
   { key: "90d", label: "Last 90 days" },
   { key: "ytd", label: "YTD" },
+];
+const DATE_PRESET_OPTIONS: { value: string; label: string }[] = [
+  ...DATE_PRESETS.map((p) => ({ value: p.key, label: p.label })),
+  { value: "custom", label: "Custom range…" },
 ];
 
 // Compute the from/to ISO date range for a preset using UTC boundaries — the
@@ -198,19 +205,28 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             Every order from initial intake through delivery. Status derives from data — never picked manually.
           </p>
           {/* Print-only context line: shows on paper what filters were applied
-              and how many records the list contains. Display:none on screen. */}
-          <p className="mt-1 text-[12px] print-only" style={{ color: "#000", display: "none" }}>
-            View: <strong>{VIEWS.find((v) => v.key === view)?.label ?? view}</strong>
-            {" · "}{filtered.length} record{filtered.length === 1 ? "" : "s"}
-            {dateRange && <> · Order Date {dateRange.from} → {dateRange.to}</>}
-            {insuranceFilter && <> · Insurance {insuranceFilter}</>}
-            {authFilter && <> · Auth {authFilter}</>}
-            {deductibleFilter && <> · Deductible {deductibleFilter}</>}
-            {companyFilter && <> · Company {companyFilter}</>}
-            {typeFilter && <> · Type {typeFilter}</>}
-            {search.trim() && <> · Search “{search.trim()}”</>}
-            {" · Printed "}{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-          </p>
+              and how many records the list contains. Display:none on screen.
+              Build a single chips array so adding a new filter requires one
+              push, not another conditional fragment slipped in by hand. */}
+          {(() => {
+            const chips: string[] = [
+              `View: ${VIEWS.find((v) => v.key === view)?.label ?? view}`,
+              `${filtered.length} record${filtered.length === 1 ? "" : "s"}`,
+            ];
+            if (dateRange) chips.push(`Order Date ${dateRange.from} → ${dateRange.to}`);
+            if (insuranceFilter) chips.push(`Insurance ${insuranceFilter}`);
+            if (authFilter) chips.push(`Auth ${authFilter}`);
+            if (deductibleFilter) chips.push(`Deductible ${deductibleFilter}`);
+            if (companyFilter) chips.push(`Company ${companyFilter}`);
+            if (typeFilter) chips.push(`Type ${typeFilter}`);
+            if (search.trim()) chips.push(`Search “${search.trim()}”`);
+            chips.push(`Printed ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`);
+            return (
+              <p className="mt-1 text-[12px] print-only" style={{ color: "#000", display: "none" }}>
+                {chips.join(" · ")}
+              </p>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2 tracker-toolbar">
           <button
@@ -389,7 +405,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             if (next !== "custom") { setDateFrom(""); setDateTo(""); }
           }}
           placeholder="All time"
-          options={DATE_PRESETS.filter((p) => p.key !== "all").map((p) => ({ value: p.key, label: p.label })).concat([{ value: "custom", label: "Custom range…" }])}
+          options={DATE_PRESET_OPTIONS}
         />
         {datePreset === "custom" && (
           <>

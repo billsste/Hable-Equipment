@@ -17,11 +17,18 @@ export default async function InventoryPage() {
   if (!me) redirect("/login");
   if (me.role !== "supplier" && me.role !== "dispatcher") redirect("/tracker");
 
+  // One query, two views: pull active item-kind equipment with their serials
+  // included, then derive both the stock-by-equipment summary and the flat
+  // serials list from the same result. The earlier two-query version
+  // double-scanned the serials table; we now do the join once.
   const equipmentRows = await db.equipment.findMany({
     where: { active: true, kind: "item" },
     include: {
       serials: {
-        select: { id: true, sn: true, status: true, location: true, notes: true, orderId: true, deployedAt: true, updatedAt: true },
+        select: {
+          id: true, sn: true, status: true, location: true, notes: true,
+          orderId: true, deployedAt: true, retiredAt: true, updatedAt: true,
+        },
         orderBy: { sn: "asc" },
       },
     },
@@ -45,25 +52,25 @@ export default async function InventoryPage() {
     };
   });
 
-  const serialRows = await db.serialItem.findMany({
-    include: { equipment: { select: { id: true, name: true, category: true, abbreviation: true } } },
-    orderBy: [{ updatedAt: "desc" }],
-  });
-  const serials: SerialRow[] = serialRows.map((s) => ({
-    id: s.id,
-    sn: s.sn,
-    equipmentId: s.equipmentId,
-    equipmentName: s.equipment.name,
-    equipmentCategory: s.equipment.category,
-    equipmentAbbreviation: s.equipment.abbreviation,
-    status: s.status,
-    location: s.location,
-    notes: s.notes,
-    orderId: s.orderId,
-    deployedAt: s.deployedAt?.toISOString() ?? null,
-    retiredAt: s.retiredAt?.toISOString() ?? null,
-    updatedAt: s.updatedAt.toISOString(),
-  }));
+  // Flatten + most-recently-touched first, matching the previous explicit
+  // serialItem.findMany({ orderBy: { updatedAt: 'desc' } }).
+  const serials: SerialRow[] = equipmentRows
+    .flatMap((e) => e.serials.map((s) => ({
+      id: s.id,
+      sn: s.sn,
+      equipmentId: e.id,
+      equipmentName: e.name,
+      equipmentCategory: e.category,
+      equipmentAbbreviation: e.abbreviation,
+      status: s.status,
+      location: s.location,
+      notes: s.notes,
+      orderId: s.orderId,
+      deployedAt: s.deployedAt?.toISOString() ?? null,
+      retiredAt: s.retiredAt?.toISOString() ?? null,
+      updatedAt: s.updatedAt.toISOString(),
+    })))
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
 
   return (
     <InventoryClient

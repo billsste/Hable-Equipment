@@ -464,20 +464,12 @@ function AddSerialsModal({ equipment, onClose, onAdded }: {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ equipmentId, sns: lines, location }),
       });
-      const d = await r.json();
+      const d = (await r.json()) as { created: SerialRow[]; skipped: string[]; error?: string };
       if (!r.ok) { setErr(d.error ?? "Could not add serials."); return; }
-      // Refresh by reloading the list — easiest path; the API doesn't return rows.
-      const eq = equipment.find((e) => e.id === equipmentId)!;
-      const now = new Date().toISOString();
-      const created: SerialRow[] = lines
-        .filter((sn) => !d.skipped?.includes(sn))
-        .map((sn) => ({
-          id: `tmp-${sn}-${Math.random()}`, // optimistic; reloaded fully on next page nav
-          sn, equipmentId, equipmentName: eq.name, equipmentCategory: eq.category, equipmentAbbreviation: eq.abbreviation,
-          status: "available", location, notes: "", orderId: null, deployedAt: null, retiredAt: null, updatedAt: now,
-        }));
-      setResult(d);
-      onAdded(created);
+      // POST returns the freshly inserted rows with real CUIDs + timestamps;
+      // no more `tmp-` placeholders to 404 on the next PATCH/DELETE.
+      setResult({ created: d.created.length, skipped: d.skipped });
+      onAdded(d.created);
     } finally { setBusy(false); }
   }
 

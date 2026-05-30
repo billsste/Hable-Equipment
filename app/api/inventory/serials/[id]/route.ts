@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { SerialStatus } from "@prisma/client";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { equipStore } from "@/lib/equip-store";
+import { logAudit } from "@/lib/audit";
 
 const VALID_STATUSES: SerialStatus[] = ["available", "deployed", "in_service", "out_of_service", "retired"];
 
@@ -78,10 +78,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
   const updated = await db.serialItem.update({ where: { id }, data });
 
-  await equipStore.addAuditEntry({
-    ts: new Date().toISOString(),
-    who: guard.user.name,
-    role: guard.user.role,
+  await logAudit(request, guard.user, {
     action: "Inventory serial updated",
     detail: `Serial ${updated.sn}: ${body.status ? `status→${updated.status}` : ""}${body.location !== undefined ? ` location→${updated.location}` : ""}${body.orderId !== undefined ? ` order→${updated.orderId ?? "—"}` : ""}`,
     ref: `SN-${updated.sn}`,
@@ -97,10 +94,7 @@ export async function DELETE(request: Request, ctx: { params: Promise<{ id: stri
   const existing = await db.serialItem.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found." }, { status: 404 });
   await db.serialItem.delete({ where: { id } });
-  await equipStore.addAuditEntry({
-    ts: new Date().toISOString(),
-    who: guard.user.name,
-    role: guard.user.role,
+  await logAudit(request, guard.user, {
     action: "Inventory serial removed",
     detail: `Serial ${existing.sn} removed`,
     ref: `SN-${existing.sn}`,

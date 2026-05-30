@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import {
-  SESSION_COOKIE,
-  SESSION_TTL_MS,
+  clearCookie,
   createSession,
   getLockoutRemaining,
+  parseCookies,
   recordFailedAttempt,
   clearAttempts,
+  setSessionCookie,
 } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { equipStore } from "@/lib/equip-store";
+import { logAudit } from "@/lib/audit";
 import {
   MFA_CHALLENGE_COOKIE,
   findBackupCodeHash,
@@ -22,14 +23,7 @@ import {
 // against the standard lockout (so MFA brute-force triggers the same cooldown
 // as password brute-force).
 export async function POST(request: Request) {
-  const cookieHeader = request.headers.get("cookie") ?? "";
-  const cookies = Object.fromEntries(
-    cookieHeader.split(";").map((c) => {
-      const [k, ...v] = c.trim().split("=");
-      return [k.trim(), decodeURIComponent(v.join("="))];
-    }),
-  );
-  const challengeToken = cookies[MFA_CHALLENGE_COOKIE];
+  const challengeToken = parseCookies(request)[MFA_CHALLENGE_COOKIE];
   if (!challengeToken) {
     return NextResponse.json({ error: "MFA challenge expired. Sign in again." }, { status: 401 });
   }
@@ -103,26 +97,16 @@ export async function POST(request: Request) {
   await clearAttempts(row.email);
   const sessionId = createSession(row.id);
 
-  await equipStore.addAuditEntry({
-    ts: new Date().toISOString(),
-    who: row.name,
-    role: row.role,
+  await logAudit(request, { id: row.id, name: row.name, role: row.role }, {
     action: usedBackup ? "Login (MFA backup code)" : "Login (MFA)",
-    detail: `User completed ${usedBackup ? "MFA backup-code" : "MFA"} from ${request.headers.get("x-forwarded-for") ?? "unknown"}`,
-    ref: `USR-${row.id}`,
+    detail: `User completed ${usedBackup ? "MFA backup-code" : "MFA"}`,
   });
 
   const response = NextResponse.json({
     user: { id: row.id, name: row.name, email: row.email, role: row.role },
   });
   // Swap: clear the short-lived challenge, set the real session.
-  response.cookies.set(MFA_CHALLENGE_COOKIE, "", {
-    httpOnly: true, secure: process.env.NODE_ENV === "production",
-    sameSite: "strict", maxAge: 0, path: "/",
-  });
-  response.cookies.set(SESSION_COOKIE, sessionId, {
-    httpOnly: true, secure: process.env.NODE_ENV === "production",
-    sameSite: "strict", maxAge: SESSION_TTL_MS / 1000, path: "/",
-  });
+  clearCookie(response, MFA_CHALLENGE_COOKIE);
+  setSessionCookie(response, sessionId);
   return response;
 }

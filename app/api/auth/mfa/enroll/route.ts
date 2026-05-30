@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { equipStore } from "@/lib/equip-store";
+import { logAudit } from "@/lib/audit";
 import { generateBackupCodes, hashBackupCode, verifyTotp } from "@/lib/mfa";
 
 // Confirms enrollment by verifying the first TOTP code the user types from
@@ -46,14 +46,7 @@ export async function POST(request: Request) {
     },
   });
 
-  await equipStore.addAuditEntry({
-    ts: new Date().toISOString(),
-    who: user.name,
-    role: user.role,
-    action: "MFA enabled",
-    detail: "TOTP authenticator enrolled",
-    ref: `USR-${user.id}`,
-  });
+  await logAudit(request, user, { action: "MFA enabled", detail: "TOTP authenticator enrolled" });
 
   // Cleartext codes are only returned on this single response.
   return NextResponse.json({ backupCodes: codes });

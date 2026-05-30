@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { equipStore } from "@/lib/equip-store";
+import { logAudit } from "@/lib/audit";
 
 const MAX_BULK = 200;
 const SN_MAX = 60;
@@ -90,17 +90,38 @@ export async function POST(request: Request) {
     });
   }
 
-  await equipStore.addAuditEntry({
-    ts: new Date().toISOString(),
-    who: guard.user.name,
-    role: guard.user.role,
+  // Read back the rows we just inserted so the client gets real IDs (and the
+  // current timestamps) rather than fabricating tmp- placeholders that PATCH/
+  // DELETE would then 404 on until a full page nav.
+  const createdRows = toCreate.length > 0
+    ? await db.serialItem.findMany({
+        where: { sn: { in: toCreate }, equipmentId: equipment.id },
+        include: { equipment: { select: { id: true, name: true, category: true, abbreviation: true } } },
+      })
+    : [];
+
+  await logAudit(request, guard.user, {
     action: "Inventory serial added",
-    detail: `Added ${toCreate.length} serial(s) for ${equipment.name}${taken.size ? ` (${taken.size} duplicate skipped)` : ""}`,
+    detail: `Added ${createdRows.length} serial(s) for ${equipment.name}${taken.size ? ` (${taken.size} duplicate skipped)` : ""}`,
     ref: `EQP-${equipment.id.slice(0, 8)}`,
   });
 
   return NextResponse.json({
-    created: toCreate.length,
+    created: createdRows.map((s) => ({
+      id: s.id,
+      sn: s.sn,
+      equipmentId: s.equipmentId,
+      equipmentName: s.equipment.name,
+      equipmentCategory: s.equipment.category,
+      equipmentAbbreviation: s.equipment.abbreviation,
+      status: s.status,
+      location: s.location,
+      notes: s.notes,
+      orderId: s.orderId,
+      deployedAt: s.deployedAt?.toISOString() ?? null,
+      retiredAt: s.retiredAt?.toISOString() ?? null,
+      updatedAt: s.updatedAt.toISOString(),
+    })),
     skipped: Array.from(taken),
   });
 }

@@ -63,10 +63,12 @@ export function PWARegister() {
           comfortably above it on touch devices. */}
       <style>{`body { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px) !important; }`}</style>
     <div
-      // calc(env(safe-area-inset-bottom) + 16px) lifts the card above the
-      // iOS home-indicator. The wrapper card was previously overlapping the
-      // first tracker row on narrow viewports; we now nudge it a bit higher
-      // and trim its size so it sits clearly off content.
+      // no-print lets the global print stylesheet hide the install card on
+      // paper. calc(env(safe-area-inset-bottom) + 16px) lifts the card above
+      // the iOS home-indicator. The wrapper card was previously overlapping
+      // the first tracker row on narrow viewports; we now nudge it a bit
+      // higher and trim its size so it sits clearly off content.
+      className="no-print"
       style={{
         position: "fixed",
         bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",

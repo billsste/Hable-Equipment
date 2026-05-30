@@ -52,15 +52,14 @@ h1, h2, h3, h4, h5, h6, p {
   body { background: #fff !important; color: #000 !important; }
   /* Show print-only context lines (filter summary, etc.) on paper */
   .print-only { display: block !important; }
-  /* Hide everything that isn't part of the printable data */
+  /* Hide everything that isn't part of the printable data. The install
+     prompt now carries .no-print directly, so we don't need fragile
+     attribute-substring selectors against inline styles to catch it. */
   aside,
   nav,
   .tracker-toolbar,
   .no-print,
   [role="dialog"] { display: none !important; }
-  /* Hide the install prompt and any fixed banners */
-  [style*="position: fixed"],
-  [style*="position:fixed"] { display: none !important; }
   /* Strip backgrounds, shadows, and rounding so the table prints crisply */
   *, *::before, *::after {
     background: transparent !important;

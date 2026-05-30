@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { equipStore } from "@/lib/equip-store";
+import { logAudit } from "@/lib/audit";
 import {
   ALLOWED_MIME_TYPES,
   MAX_ATTACHMENTS_PER_ORDER,
@@ -100,10 +100,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     },
   });
 
-  await equipStore.addAuditEntry({
-    ts: new Date().toISOString(),
-    who: guard.user.name,
-    role: guard.user.role,
+  await logAudit(request, guard.user, {
     action: "Order attachment uploaded",
     detail: `${filename} (${buffer.length} bytes, ${file.type}) attached to ${order.orderNumber}`,
     ref: order.orderNumber,

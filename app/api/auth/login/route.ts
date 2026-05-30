@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import {
-  SESSION_COOKIE,
-  SESSION_TTL_MS,
   createSession,
   getLockoutRemaining,
   recordFailedAttempt,
   clearAttempts,
+  setSessionCookie,
+  setChallengeCookie,
 } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { equipStore } from "@/lib/equip-store";
@@ -55,13 +55,7 @@ export async function POST(request: Request) {
     if (user.mfaEnabled) {
       const challenge = createChallengeToken(user.id);
       const response = NextResponse.json({ mfaRequired: true });
-      response.cookies.set(MFA_CHALLENGE_COOKIE, challenge, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: MFA_CHALLENGE_MAX_AGE,
-        path: "/",
-      });
+      setChallengeCookie(response, MFA_CHALLENGE_COOKIE, challenge, MFA_CHALLENGE_MAX_AGE);
       return response;
     }
 
@@ -82,13 +76,7 @@ export async function POST(request: Request) {
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
     });
 
-    response.cookies.set(SESSION_COOKIE, sessionId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: SESSION_TTL_MS / 1000,
-      path: "/",
-    });
+    setSessionCookie(response, sessionId);
 
     return response;
   } catch {

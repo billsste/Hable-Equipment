@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { equipStore } from "@/lib/equip-store";
+import { logAudit } from "@/lib/audit";
 import { findBackupCodeHash, verifyTotp } from "@/lib/mfa";
 
 // Turning MFA off REQUIRES a fresh proof — either a current TOTP code or an
@@ -46,14 +46,7 @@ export async function POST(request: Request) {
     },
   });
 
-  await equipStore.addAuditEntry({
-    ts: new Date().toISOString(),
-    who: user.name,
-    role: user.role,
-    action: "MFA disabled",
-    detail: "TOTP authenticator removed",
-    ref: `USR-${user.id}`,
-  });
+  await logAudit(request, user, { action: "MFA disabled", detail: "TOTP authenticator removed" });
 
   return NextResponse.json({ ok: true });
 }
