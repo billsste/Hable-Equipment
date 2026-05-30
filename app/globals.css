@@ -41,3 +41,39 @@ h1, h2, h3, h4, h5, h6, p {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #d6d9fc; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #b9b9f9; }
+
+/* ── Print stylesheet ───────────────────────────────────────────────────────
+   Triggered by the Tracker's "Print" button (window.print()). Hides app chrome
+   (sidebar, modals, install prompt, toolbar/filters) so only the data table —
+   plus the page header — lands on paper. Black ink, monochrome borders,
+   minimal whitespace; designed for landscape letter. */
+@media print {
+  @page { size: landscape; margin: 0.5in; }
+  body { background: #fff !important; color: #000 !important; }
+  /* Show print-only context lines (filter summary, etc.) on paper */
+  .print-only { display: block !important; }
+  /* Hide everything that isn't part of the printable data */
+  aside,
+  nav,
+  .tracker-toolbar,
+  .no-print,
+  [role="dialog"] { display: none !important; }
+  /* Hide the install prompt and any fixed banners */
+  [style*="position: fixed"],
+  [style*="position:fixed"] { display: none !important; }
+  /* Strip backgrounds, shadows, and rounding so the table prints crisply */
+  *, *::before, *::after {
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    text-shadow: none !important;
+  }
+  table { border-collapse: collapse !important; width: 100% !important; }
+  th, td { border: 1px solid #888 !important; padding: 6px 8px !important; }
+  thead { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* Keep the page header (title + filters summary) visible */
+  h1 { font-size: 16pt !important; margin-bottom: 6pt !important; }
+  /* Don't break rows in half across pages */
+  tr { page-break-inside: avoid !important; }
+  thead { display: table-header-group; }
+}

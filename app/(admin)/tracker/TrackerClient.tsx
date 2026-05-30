@@ -13,16 +13,8 @@ import {
   type OrderShape,
 } from "@/lib/order-types";
 import type { WorkOrderType } from "@prisma/client";
-import {
-  alertSortWeight,
-  formatDuration,
-  orderAlerts,
-  stageAging,
-  topAlertLevel,
-  type StageAging,
-} from "@/lib/sla";
 import OrderForm from "./OrderForm";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Download, Plus, Search, TriangleAlert, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Download, Plus, Printer, Search, X } from "lucide-react";
 import { downloadCsv } from "@/lib/utils";
 
 export type Lookups = {
@@ -63,13 +55,12 @@ type Props = {
   lookups: Lookups;
 };
 
-type ViewKey = "all" | "open" | "alerts" | "ready" | "out" | "auth" | "delivered";
-type SortKey = "orderNumber" | "patient" | "facility" | "stage" | "csr" | "dispatcher" | "discharge";
+type ViewKey = "all" | "open" | "ready" | "out" | "auth" | "delivered";
+type SortKey = "orderNumber" | "patient" | "facility" | "stage" | "csr" | "dispatcher" | "discharge" | "orderDate";
 type SortDir = "asc" | "desc";
 
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
   { key: "open",      label: "Open",             description: "Everything in flight" },
-  { key: "alerts",    label: "Alerts",           description: "Orders breaching SLA — stuck in stage, aged auth, or imminent discharge" },
   { key: "auth",      label: "Auth Follow-Ups",  description: "Pending insurance authorization" },
   { key: "ready",     label: "Ready to Assign",  description: "Verification done, no dispatcher yet" },
   { key: "out",       label: "Out for Delivery", description: "Dispatcher en route" },
@@ -77,7 +68,34 @@ const VIEWS: { key: ViewKey; label: string; description: string }[] = [
   { key: "all",       label: "All",              description: "Every order" },
 ];
 
-const VALID_VIEWS = new Set<ViewKey>(["all", "open", "alerts", "ready", "out", "auth", "delivered"]);
+const VALID_VIEWS = new Set<ViewKey>(["all", "open", "ready", "out", "auth", "delivered"]);
+
+// Order Date presets shown next to the date inputs. "all" = no filter.
+type DatePreset = "all" | "7d" | "30d" | "90d" | "ytd" | "custom";
+const DATE_PRESETS: { key: DatePreset; label: string }[] = [
+  { key: "all", label: "All time" },
+  { key: "7d",  label: "Last 7 days" },
+  { key: "30d", label: "Last 30 days" },
+  { key: "90d", label: "Last 90 days" },
+  { key: "ytd", label: "YTD" },
+];
+
+// Compute the from/to ISO date range for a preset, using the user's local
+// midnight boundaries. Returns null for "all" (no filter) and "custom".
+function resolveDatePreset(key: DatePreset): { from: string; to: string } | null {
+  if (key === "all" || key === "custom") return null;
+  const now = new Date();
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let from = new Date(to);
+  if (key === "7d") from.setDate(to.getDate() - 6);
+  else if (key === "30d") from.setDate(to.getDate() - 29);
+  else if (key === "90d") from.setDate(to.getDate() - 89);
+  else if (key === "ytd") from = new Date(now.getFullYear(), 0, 1);
+  return { from: toIsoDay(from), to: toIsoDay(to) };
+}
+function toIsoDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export default function TrackerClient({ currentUser, initialOrders, initialView, initialNew, lookups }: Props) {
   const startView: ViewKey =
@@ -94,27 +112,42 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const [editing, setEditing] = useState<OrderShape | null>(null);
   const [creating, setCreating] = useState(initialNew);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "discharge", dir: "asc" });
+  // Order Date range filter — drives both table results AND CSV/Print output.
+  // Preset "all" → no filter; "custom" → use the inline from/to date inputs.
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   // Time-dependent row badges (auth age, DC blocker) hold until after hydration
   // so a server/client clock skew on Date.now() can't cause a hydration mismatch.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // Resolve the effective from/to ISO date strings for the active preset.
+  const dateRange = useMemo<{ from: string; to: string } | null>(() => {
+    if (datePreset === "custom") {
+      if (!dateFrom && !dateTo) return null;
+      return { from: dateFrom || "1900-01-01", to: dateTo || "2999-12-31" };
+    }
+    return resolveDatePreset(datePreset);
+  }, [datePreset, dateFrom, dateTo]);
+
   const filtered = useMemo(
     () =>
       sortOrders(
-        filterOrders(orders, view, search, { insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter }, mounted),
+        filterOrders(
+          orders, view, search,
+          { insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, dateRange },
+        ),
         sort,
-        view,
-        mounted,
       ),
-    [orders, view, search, insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, sort, mounted],
+    [orders, view, search, insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, dateRange, sort],
   );
   const hasFieldFilter =
-    insuranceFilter !== "" || authFilter !== "" || deductibleFilter !== "" || companyFilter !== "" || typeFilter !== "";
+    insuranceFilter !== "" || authFilter !== "" || deductibleFilter !== "" || companyFilter !== "" || typeFilter !== "" || datePreset !== "all";
   const counts = useMemo(() => {
     const m: Record<ViewKey, number> = {
       all: orders.length,
-      open: 0, alerts: 0, ready: 0, out: 0, auth: 0, delivered: 0,
+      open: 0, ready: 0, out: 0, auth: 0, delivered: 0,
     };
     for (const o of orders) {
       if (o.stage !== "DELIVERED" && o.stage !== "CANCELLED") m.open++;
@@ -122,12 +155,9 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       if (o.stage === "OUT_FOR_DELIVERY") m.out++;
       if (AUTH_IN_FLIGHT.includes(o.authStatus)) m.auth++;
       if (o.stage === "DELIVERED") m.delivered++;
-      // Alert counting depends on Date.now(); only run it after hydration so a
-      // server/client clock skew can't desync the tab badge.
-      if (mounted && orderAlerts(o).length > 0) m.alerts++;
     }
     return m;
-  }, [orders, mounted]);
+  }, [orders]);
 
   function toggleSort(key: SortKey) {
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -160,11 +190,38 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           >
             Tracker
           </h1>
-          <p className="mt-1 text-[14px]" style={{ color: "#64748d", fontWeight: 300 }}>
+          <p className="mt-1 text-[14px] no-print" style={{ color: "#64748d", fontWeight: 300 }}>
             Every order from initial intake through delivery. Status derives from data — never picked manually.
           </p>
+          {/* Print-only context line: shows on paper what filters were applied
+              and how many records the list contains. Display:none on screen. */}
+          <p className="mt-1 text-[12px] print-only" style={{ color: "#000", display: "none" }}>
+            View: <strong>{VIEWS.find((v) => v.key === view)?.label ?? view}</strong>
+            {" · "}{filtered.length} record{filtered.length === 1 ? "" : "s"}
+            {dateRange && <> · Order Date {dateRange.from} → {dateRange.to}</>}
+            {insuranceFilter && <> · Insurance {insuranceFilter}</>}
+            {authFilter && <> · Auth {authFilter}</>}
+            {deductibleFilter && <> · Deductible {deductibleFilter}</>}
+            {companyFilter && <> · Company {companyFilter}</>}
+            {typeFilter && <> · Type {typeFilter}</>}
+            {search.trim() && <> · Search “{search.trim()}”</>}
+            {" · Printed "}{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 tracker-toolbar">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={filtered.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-[13px] disabled:opacity-50"
+            style={{
+              background: "#ffffff", border: "1px solid #e5edf5", color: "#273951",
+              borderRadius: 4, fontWeight: 400,
+            }}
+            title="Print the filtered list"
+          >
+            <Printer size={14} /> Print
+          </button>
           <button
             type="button"
             onClick={() => exportCsv(filtered)}
@@ -177,6 +234,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               borderRadius: 4,
               fontWeight: 400,
             }}
+            title="Download CSV (opens in Excel)"
           >
             <Download size={14} /> Export CSV
           </button>
@@ -194,7 +252,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       </div>
 
       {/* View tabs */}
-      <div className="flex flex-wrap gap-1" style={{ marginBottom: 12 }}>
+      <div className="flex flex-wrap gap-1 no-print" style={{ marginBottom: 12 }}>
         {VIEWS.map((v) => {
           const active = view === v.key;
           const count = counts[v.key];
@@ -228,19 +286,11 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
                 }
               }}
             >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                {v.key === "alerts" && count > 0 && <TriangleAlert size={12} style={{ color: "#b03238" }} />}
-                {v.label}
-              </span>
+              <span>{v.label}</span>
               <span
                 style={{
                   marginLeft: 8,
-                  color:
-                    v.key === "alerts" && count > 0
-                      ? "#b03238"
-                      : active
-                        ? "#4434d4"
-                        : "#94a3b8",
+                  color: active ? "#4434d4" : "#94a3b8",
                   fontWeight: 500,
                   fontFeatureSettings: '"tnum"',
                   opacity: active ? 1 : 0.8,
@@ -254,7 +304,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       </div>
 
       {/* Search + filters */}
-      <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 12 }}>
+      <div className="flex flex-wrap items-center gap-2 no-print" style={{ marginBottom: 12 }}>
         <div
           style={{
             display: "flex",
@@ -325,6 +375,37 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             label: WORK_ORDER_TYPE_LABELS[k],
           }))}
         />
+        <FilterSelect
+          value={datePreset === "all" ? "" : datePreset}
+          onChange={(v) => {
+            const next = (v || "all") as DatePreset;
+            setDatePreset(next);
+            // Clear the custom inputs when switching off custom so the chip
+            // count and CSV match what's onscreen.
+            if (next !== "custom") { setDateFrom(""); setDateTo(""); }
+          }}
+          placeholder="All time"
+          options={DATE_PRESETS.filter((p) => p.key !== "all").map((p) => ({ value: p.key, label: p.label })).concat([{ value: "custom", label: "Custom range…" }])}
+        />
+        {datePreset === "custom" && (
+          <>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
+              aria-label="Order date from"
+            />
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>–</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
+              aria-label="Order date to"
+            />
+          </>
+        )}
 
         {hasFieldFilter && (
           <button
@@ -335,6 +416,9 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               setDeductibleFilter("");
               setCompanyFilter("");
               setTypeFilter("");
+              setDatePreset("all");
+              setDateFrom("");
+              setDateTo("");
             }}
             style={{
               padding: "6px 10px",
@@ -376,16 +460,18 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
             <colgroup>
               <col style={{ width: 130 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: "18%" }} />
               <col style={{ width: "20%" }} />
-              <col style={{ width: "22%" }} />
               <col style={{ width: 150 }} />
-              <col style={{ width: "13%" }} />
-              <col style={{ width: "13%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
               <col style={{ width: 130 }} />
             </colgroup>
             <thead>
               <tr style={{ background: "#f6f9fc", borderBottom: "1px solid #e5edf5" }}>
                 <Th sortKey="orderNumber" sort={sort} onSort={toggleSort}>Order #</Th>
+                <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
                 <Th sortKey="patient" sort={sort} onSort={toggleSort}>Patient</Th>
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
                 <Th sortKey="stage" sort={sort} onSort={toggleSort}>Stage</Th>
@@ -397,7 +483,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
+                  <td colSpan={8} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
                     No orders in this view.
                   </td>
                 </tr>
@@ -473,7 +559,7 @@ function Th({
 }
 
 function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
-  const { dcInfo, stageColor, authAge, showAuthAge, dcBlocker, stageAge } = deriveOrderDisplay(order);
+  const { dcInfo, stageColor, authAge, showAuthAge, dcBlocker } = deriveOrderDisplay(order);
 
   return (
     <tr
@@ -499,6 +585,11 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
         >
           {order.orderNumber}
         </div>
+      </Td>
+      <Td>
+        <span style={{ color: "#273951", fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
+          {formatOrderDate(order.createdAt)}
+        </span>
       </Td>
       <Td>
         <div
@@ -541,7 +632,6 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
               color={WORK_ORDER_TYPE_COLORS[order.workOrderType].color}
             />
           )}
-          {mounted && stageAge && <StageAgingChip aging={stageAge} />}
           {mounted && showAuthAge && authAge !== null && (
             <>
               <span style={{ color: "#b03238", fontSize: 10, fontWeight: 500 }}>·</span>
@@ -609,7 +699,7 @@ function Td({ children }: { children: React.ReactNode }) {
 }
 
 function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
-  const { dcInfo, stageColor, authAge, showAuthAge, dcBlocker, stageAge } = deriveOrderDisplay(order);
+  const { dcInfo, stageColor, authAge, showAuthAge, dcBlocker } = deriveOrderDisplay(order);
   return (
     <button
       type="button"
@@ -643,7 +733,6 @@ function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean
               color={WORK_ORDER_TYPE_COLORS[order.workOrderType].color}
             />
           )}
-          {mounted && stageAge && <StageAgingChip aging={stageAge} />}
           {mounted && showAuthAge && authAge !== null && (
             <AuthAgePill status={order.authStatus} age={authAge} />
           )}
@@ -656,6 +745,10 @@ function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean
         {order.facilityName ?? "—"}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 12 }}>
+        <span style={{ color: "#64748d", fontFeatureSettings: '"tnum"' }}>
+          Ordered {formatOrderDate(order.createdAt)}
+        </span>
+        <span style={{ color: "#94a3b8" }}>·</span>
         <span style={{ color: order.dispatcherName ? "#273951" : "#94a3b8" }}>
           {order.dispatcherName ?? "Unassigned"}
         </span>
@@ -900,14 +993,14 @@ function filterOrders(
   orders: OrderShape[],
   view: ViewKey,
   search: string,
-  fields: { insuranceFilter: string; authFilter: string; deductibleFilter: string; companyFilter: string; typeFilter: string },
-  mounted: boolean,
+  fields: {
+    insuranceFilter: string; authFilter: string; deductibleFilter: string;
+    companyFilter: string; typeFilter: string;
+    dateRange: { from: string; to: string } | null;
+  },
 ) {
   let list = orders;
   if (view === "open") list = list.filter((o) => o.stage !== "DELIVERED" && o.stage !== "CANCELLED");
-  // Alerts are time-derived; pre-hydration we can't safely compute them, so show
-  // nothing until mounted (the badge/list fill in on the first client render).
-  else if (view === "alerts") list = mounted ? list.filter((o) => orderAlerts(o).length > 0) : [];
   else if (view === "ready") list = list.filter((o) => o.stage === "READY_TO_ASSIGN");
   else if (view === "out") list = list.filter((o) => o.stage === "OUT_FOR_DELIVERY");
   else if (view === "auth") list = list.filter((o) =>
@@ -934,6 +1027,15 @@ function filterOrders(
   if (fields.typeFilter) {
     list = list.filter((o) => o.workOrderType === fields.typeFilter);
   }
+  if (fields.dateRange) {
+    // Compare the YYYY-MM-DD slice in UTC so the inclusive boundary matches
+    // what the user typed in the date inputs (no TZ drift on either end).
+    const { from, to } = fields.dateRange;
+    list = list.filter((o) => {
+      const ymd = o.createdAt.slice(0, 10);
+      return ymd >= from && ymd <= to;
+    });
+  }
 
   if (search.trim()) {
     const q = search.toLowerCase();
@@ -950,16 +1052,12 @@ function filterOrders(
   return list;
 }
 
-function sortOrders(
-  list: OrderShape[],
-  sort: { key: SortKey; dir: SortDir },
-  view: ViewKey,
-  mounted: boolean,
-): OrderShape[] {
+function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): OrderShape[] {
   const dir = sort.dir === "asc" ? 1 : -1;
   const get = (o: OrderShape): string | number => {
     switch (sort.key) {
       case "orderNumber": return o.orderNumber;
+      case "orderDate":   return new Date(o.createdAt).getTime();
       case "patient": return o.patientDisplay.toLowerCase();
       case "facility": return (o.facilityName ?? "").toLowerCase();
       case "stage": return o.stage;
@@ -968,19 +1066,19 @@ function sortOrders(
       case "discharge": return o.dischargeDate ? new Date(o.dischargeDate).getTime() : Number.MAX_SAFE_INTEGER;
     }
   };
-  const sorted = [...list].sort((a, b) => {
+  return [...list].sort((a, b) => {
     const av = get(a);
     const bv = get(b);
     if (av < bv) return -1 * dir;
     if (av > bv) return 1 * dir;
     return 0;
   });
-  // In the Alerts worklist, severity leads: breaches first, then warnings,
-  // with the user's chosen column sort breaking ties within each band.
-  if (view === "alerts" && mounted) {
-    sorted.sort((a, b) => alertSortWeight(topAlertLevel(orderAlerts(b))) - alertSortWeight(topAlertLevel(orderAlerts(a))));
-  }
-  return sorted;
+}
+
+// Order Date is the creation timestamp. Render in UTC so the date the user
+// sees matches what's in CSV/print (consistent with formatDc).
+function formatOrderDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
 type DcUrgency = ReturnType<typeof dcUrgency>;
@@ -995,24 +1093,26 @@ function formatDc(iso: string | null): { dateLabel: string; urgency: DcUrgency }
 }
 
 function exportCsv(rows: OrderShape[]): void {
+  // Order Date leads the row so it's the leftmost column in Excel after the
+  // unique Order # — matches how clients typically sort the printed list.
   const header = [
-    "Order #", "Patient", "Facility", "Stage", "CSR", "Dispatcher",
+    "Order #", "Order Date", "Patient", "Facility", "Stage", "CSR", "Dispatcher",
     "Discharge", "Authorization Status", "Primary Insurance", "Companies",
-    "Items", "Created",
+    "Items",
   ];
   const data = rows.map((o) => [
     o.orderNumber,
+    new Date(o.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" }),
     o.patientDisplay,
     o.facilityName ?? "",
     STAGE_LABELS[o.stage],
     o.csrName ?? "",
     o.dispatcherName ?? "",
-    o.dischargeDate ? new Date(o.dischargeDate).toLocaleDateString("en-US") : "",
+    o.dischargeDate ? new Date(o.dischargeDate).toLocaleDateString("en-US", { timeZone: "UTC" }) : "",
     AUTH_LABELS[o.authStatus],
     o.primaryInsuranceKey ?? "",
     o.fulfillmentCompanies.join("; "),
     o.items.map((it) => `${it.abbreviation || it.name}${it.quantity > 1 ? ` x${it.quantity}` : ""}`).join("; "),
-    new Date(o.createdAt).toLocaleDateString("en-US"),
   ]);
   downloadCsv(`tracker-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...data]);
 }
@@ -1032,14 +1132,12 @@ function computeDcBlocker(
 function deriveOrderDisplay(order: OrderShape) {
   const dcInfo = formatDc(order.dischargeDate);
   const authAge = authAgingDays(order.authStatus, order.authSubmittedAt);
-  const aging = stageAging(order);
   return {
     dcInfo,
     stageColor: STAGE_COLORS[order.stage],
     authAge,
     showAuthAge: authAge !== null && authAge > 5,
     dcBlocker: computeDcBlocker(order, dcInfo.urgency),
-    stageAge: aging && aging.level !== "ok" ? aging : null,
   };
 }
 
@@ -1050,34 +1148,6 @@ function AuthAgePill({ status, age }: { status: OrderShape["authStatus"]; age: n
       style={{ color: "#b03238", fontSize: 10, fontWeight: 500 }}
     >
       auth {age}d
-    </span>
-  );
-}
-
-function StageAgingChip({ aging }: { aging: StageAging }) {
-  const breach = aging.level === "breach";
-  const color = breach ? "#b03238" : "#9b6829";
-  const bg = breach ? "rgba(229,72,77,0.12)" : "rgba(245,158,11,0.16)";
-  return (
-    <span
-      title={`In this stage for ${formatDuration(aging.hours)} — SLA is ${aging.threshold.breach}h.`}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 3,
-        background: bg,
-        color,
-        fontSize: 10,
-        fontWeight: 500,
-        padding: "1px 5px",
-        borderRadius: 3,
-        border: `1px solid ${hexWithAlpha(color, 0.25)}`,
-        whiteSpace: "nowrap",
-        fontFeatureSettings: '"tnum"',
-      }}
-    >
-      <TriangleAlert size={9} />
-      {formatDuration(aging.hours)}
     </span>
   );
 }
