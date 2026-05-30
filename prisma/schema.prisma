@@ -15,6 +15,15 @@ model User {
   role            UserRole
   roles           String[]  @default([])
   active          Boolean   @default(true)
+  // ── MFA (TOTP, RFC 6238) ──
+  // mfaSecret is the raw base32 TOTP seed; it's only meaningful inside the DB
+  // boundary (encryption-at-rest is the protection layer per the HIPAA scorecard).
+  // mfaBackupCodes stores SHA-256 hex hashes of one-time recovery codes — never
+  // the codes themselves — so a DB compromise can't unlock anyone's MFA.
+  mfaEnabled      Boolean   @default(false)
+  mfaSecret       String?
+  mfaBackupCodes  String[]  @default([])
+  mfaEnrolledAt   DateTime?
   createdTickets  Ticket[]  @relation("CreatedBy")
   assignedTickets Ticket[]  @relation("AssignedTo")
   csrOrders       Order[]   @relation("OrderCsr")

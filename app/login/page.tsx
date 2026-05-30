@@ -15,6 +15,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // MFA step state. mfaStep=true means password verified, awaiting TOTP.
+  const [mfaStep, setMfaStep] = useState(false);
+  const [mfaToken, setMfaToken] = useState("");
+  const [useBackup, setUseBackup] = useState(false);
+  const [mfaBackup, setMfaBackup] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,12 +38,46 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
+      // MFA path: server set a short-lived challenge cookie instead of a
+      // session. Swap to the TOTP form and don't bounce to /tracker yet.
+      if (data.mfaRequired) {
+        setMfaStep(true);
+        setLoading(false);
+        return;
+      }
       const sessionCheck = await fetch("/api/me", {
         cache: "no-store",
         credentials: "same-origin",
       });
       if (!sessionCheck.ok) {
         setError("Login worked, but the session did not stick. Please try once more.");
+        setLoading(false);
+        return;
+      }
+      window.location.assign("/tracker");
+    } catch {
+      setError("Network error. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  async function handleMfa(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const body = useBackup
+        ? { backupCode: mfaBackup }
+        : { token: mfaToken };
+      const res = await fetch("/api/auth/mfa/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Verification failed");
         setLoading(false);
         return;
       }
@@ -161,10 +200,14 @@ export default function LoginPage() {
                 letterSpacing: "-0.32px",
               }}
             >
-              Welcome back
+              {mfaStep ? "Two-factor code" : "Welcome back"}
             </h1>
             <p className="mb-6 text-[13px]" style={{ color: "#64748d", lineHeight: "20px" }}>
-              Sign in to review equipment requests, dispatch deliveries, and confirm completion.
+              {mfaStep
+                ? (useBackup
+                    ? "Enter one of your one-time backup codes."
+                    : "Enter the 6-digit code from your authenticator app.")
+                : "Sign in to review equipment requests, dispatch deliveries, and confirm completion."}
             </p>
 
             {error && (
@@ -181,67 +224,144 @@ export default function LoginPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="mb-1.5 block text-[12px]" style={{ color: "#273951", fontWeight: 500 }}>
-                  Email address
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="name@facility.org"
-                  className="w-full px-3 py-2 text-[13px] outline-none"
+            {!mfaStep ? (
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div>
+                  <label className="mb-1.5 block text-[12px]" style={{ color: "#273951", fontWeight: 500 }}>
+                    Email address
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="name@facility.org"
+                    className="w-full px-3 py-2 text-[13px] outline-none"
+                    style={{
+                      border: "1px solid #e5edf5",
+                      color: "#061b31",
+                      background: "#ffffff",
+                      borderRadius: 4,
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#533afd")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e5edf5")}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[12px]" style={{ color: "#273951", fontWeight: 500 }}>
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="••••••••"
+                    className="w-full px-3 py-2 text-[13px] outline-none"
+                    style={{
+                      border: "1px solid #e5edf5",
+                      color: "#061b31",
+                      background: "#ffffff",
+                      borderRadius: 4,
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#533afd")}
+                    onBlur={(e) => (e.target.style.borderColor = "#e5edf5")}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex w-full items-center justify-center gap-2 py-2 text-[13px] text-white transition-colors disabled:opacity-60"
                   style={{
-                    border: "1px solid #e5edf5",
-                    color: "#061b31",
-                    background: "#ffffff",
+                    background: "#533afd",
                     borderRadius: 4,
+                    fontWeight: 400,
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "#533afd")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e5edf5")}
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[12px]" style={{ color: "#273951", fontWeight: 500 }}>
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                  className="w-full px-3 py-2 text-[13px] outline-none"
-                  style={{
-                    border: "1px solid #e5edf5",
-                    color: "#061b31",
-                    background: "#ffffff",
-                    borderRadius: 4,
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = "#533afd")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e5edf5")}
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex w-full items-center justify-center gap-2 py-2 text-[13px] text-white transition-colors disabled:opacity-60"
-                style={{
-                  background: "#533afd",
-                  borderRadius: 4,
-                  fontWeight: 400,
-                }}
-                onMouseEnter={(e) => !loading && ((e.target as HTMLButtonElement).style.background = "#4434d4")}
-                onMouseLeave={(e) => !loading && ((e.target as HTMLButtonElement).style.background = "#533afd")}
-              >
-                {loading ? <Loader2 size={14} className="animate-spin" /> : null}
-                {loading ? "Signing in…" : "Sign in"}
-              </button>
-            </form>
+                  onMouseEnter={(e) => !loading && ((e.target as HTMLButtonElement).style.background = "#4434d4")}
+                  onMouseLeave={(e) => !loading && ((e.target as HTMLButtonElement).style.background = "#533afd")}
+                >
+                  {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {loading ? "Signing in…" : "Sign in"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleMfa} className="space-y-3">
+                {useBackup ? (
+                  <div>
+                    <label className="mb-1.5 block text-[12px]" style={{ color: "#273951", fontWeight: 500 }}>
+                      Backup code
+                    </label>
+                    <input
+                      type="text"
+                      autoFocus
+                      value={mfaBackup}
+                      onChange={(e) => setMfaBackup(e.target.value.toUpperCase())}
+                      required
+                      placeholder="XXXX-XXXX"
+                      className="w-full px-3 py-2 text-[14px] outline-none"
+                      style={{
+                        border: "1px solid #e5edf5", color: "#061b31",
+                        background: "#ffffff", borderRadius: 4,
+                        fontFamily: "SourceCodePro, ui-monospace, monospace",
+                        letterSpacing: "0.08em",
+                        fontFeatureSettings: '"tnum"',
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="mb-1.5 block text-[12px]" style={{ color: "#273951", fontWeight: 500 }}>
+                      Authenticator code
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="\d*"
+                      maxLength={6}
+                      autoFocus
+                      value={mfaToken}
+                      onChange={(e) => setMfaToken(e.target.value.replace(/\D/g, ""))}
+                      required
+                      placeholder="123456"
+                      className="w-full px-3 py-2 text-[18px] outline-none"
+                      style={{
+                        border: "1px solid #e5edf5", color: "#061b31",
+                        background: "#ffffff", borderRadius: 4,
+                        letterSpacing: "0.18em", fontFeatureSettings: '"tnum"',
+                      }}
+                    />
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={loading || (useBackup ? mfaBackup.length < 8 : mfaToken.length !== 6)}
+                  className="flex w-full items-center justify-center gap-2 py-2 text-[13px] text-white transition-colors disabled:opacity-60"
+                  style={{ background: "#533afd", borderRadius: 4, fontWeight: 400 }}
+                >
+                  {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {loading ? "Verifying…" : "Verify"}
+                </button>
+                <div className="flex items-center justify-between pt-1 text-[12px]">
+                  <button
+                    type="button"
+                    onClick={() => { setUseBackup((v) => !v); setError(""); }}
+                    style={{ color: "#533afd", background: "transparent", border: 0, cursor: "pointer", padding: 0 }}
+                  >
+                    {useBackup ? "Use authenticator code instead" : "Use a backup code instead"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMfaStep(false); setMfaToken(""); setMfaBackup(""); setUseBackup(false); setError(""); }}
+                    style={{ color: "#64748d", background: "transparent", border: 0, cursor: "pointer", padding: 0 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
 
             {/* Demo accounts */}
+            {!mfaStep && (
             <div className="mt-6 pt-5" style={{ borderTop: "1px solid #e5edf5" }}>
               <div
                 className="mb-2.5 text-[10px] uppercase"
@@ -276,6 +396,7 @@ export default function LoginPage() {
                 ))}
               </div>
             </div>
+            )}
           </div>
         </div>
       </div>

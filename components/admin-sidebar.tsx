@@ -38,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Users",         href: "/users",         icon: <Users size={18} />,              roles: ["supplier"] },
   { label: "Audit Log",     href: "/audit-log",     icon: <ClipboardList size={18} />,      roles: ["supplier"] },
   { label: "Support",       href: "/support",       icon: <LifeBuoy size={18} />,           roles: ["supplier", "dispatcher", "csr"] },
+  { label: "Account",       href: "/account",       icon: <ShieldCheck size={18} />,        roles: ["supplier", "dispatcher", "csr"] },
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {

@@ -9,6 +9,11 @@ import {
 } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { equipStore } from "@/lib/equip-store";
+import {
+  MFA_CHALLENGE_COOKIE,
+  MFA_CHALLENGE_MAX_AGE,
+  createChallengeToken,
+} from "@/lib/mfa";
 
 export async function POST(request: Request) {
   try {
@@ -29,7 +34,7 @@ export async function POST(request: Request) {
 
     const userRow = await db.user.findUnique({
       where: { email: email.toLowerCase() },
-      select: { id: true, name: true, email: true, password: true, role: true, active: true },
+      select: { id: true, name: true, email: true, password: true, role: true, active: true, mfaEnabled: true },
     });
 
     if (!userRow || userRow.password !== password) {
@@ -40,6 +45,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "This account has been deactivated." }, { status: 403 });
     }
     const user = userRow;
+
+    // ─── MFA step ────────────────────────────────────────────────────────────
+    // Password is correct; if the user has MFA enabled, do NOT issue the
+    // session cookie. Issue a short-lived signed challenge cookie that only
+    // /api/auth/mfa/verify accepts, then let the client prompt for the code.
+    if (user.mfaEnabled) {
+      await clearAttempts(email);
+      const challenge = createChallengeToken(user.id);
+      const response = NextResponse.json({ mfaRequired: true });
+      response.cookies.set(MFA_CHALLENGE_COOKIE, challenge, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: MFA_CHALLENGE_MAX_AGE,
+        path: "/",
+      });
+      return response;
+    }
 
     await clearAttempts(email);
     const sessionId = createSession(user.id);
