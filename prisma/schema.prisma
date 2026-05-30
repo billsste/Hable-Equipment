@@ -29,6 +29,7 @@ model User {
   csrOrders       Order[]   @relation("OrderCsr")
   dispatcherOrders Order[]  @relation("OrderDispatcher")
   intakeOrders    Order[]   @relation("OrderIntakeBy")
+  uploadedAttachments OrderAttachment[] @relation("OrderAttachmentUploadedBy")
 }
 
 enum UserRole {
@@ -106,25 +107,57 @@ model TicketAudit {
   action   String
 }
 
-model InventoryItem {
-  id       String       @id @default(cuid())
-  product  String
-  category String
-  serials  SerialItem[]
-}
-
+// Serial numbers track physical units of equipment. Each serial belongs to
+// one Equipment definition (the "what") and carries its own status / location /
+// linked Order (the "where"). The legacy InventoryItem model was a dead
+// duplicate of Equipment and has been removed; serials now reference Equipment
+// directly so par-level math and stock counts live on one canonical row.
 model SerialItem {
   id          String        @id @default(cuid())
-  inventoryId String
-  inventory   InventoryItem @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  equipmentId String
+  equipment   Equipment     @relation(fields: [equipmentId], references: [id])
   sn          String        @unique
-  location    String        @default("Warehouse")
   status      SerialStatus  @default(available)
+  location    String        @default("Warehouse")
+  notes       String        @default("")
+  // orderId is set when this physical unit is deployed on an order. Manually
+  // assigned by warehouse staff from the inventory screen; cleared on return.
+  orderId     String?
+  order       Order?        @relation(fields: [orderId], references: [id])
+  deployedAt  DateTime?
+  retiredAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([equipmentId, status])
+  @@index([orderId])
+  @@index([status])
 }
 
 enum SerialStatus {
   available
   deployed
+  in_service
+  out_of_service
+  retired
+}
+
+// Documents attached to an order — intake forms, signed delivery tickets,
+// insurance correspondence. Bytes stored in-DB (bytea) so they ride the same
+// backup/encryption pipeline as PHI; sized cap is enforced at the API layer.
+model OrderAttachment {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  filename     String
+  mimeType     String
+  size         Int
+  data         Bytes
+  uploadedById Int?
+  uploadedBy   User?    @relation("OrderAttachmentUploadedBy", fields: [uploadedById], references: [id])
+  uploadedAt   DateTime @default(now())
+
+  @@index([orderId])
 }
 
 model AuditEntry {
@@ -291,6 +324,8 @@ model Order {
 
   items           OrderItem[]
   history         OrderEvent[]
+  serials         SerialItem[]
+  attachments     OrderAttachment[]
 
   @@index([stage])
   @@index([dispatcherId])
@@ -336,6 +371,7 @@ model Equipment {
   color        String?
   parLevel     Int?          // Minimum on-hand stock level (from client par sheet)
   orderItems   OrderItem[]
+  serials      SerialItem[]
 
   @@index([category, active])
   @@index([kind, active])

@@ -38,6 +38,7 @@ import {
   UserSelect,
 } from "./order-form-selects";
 import { EquipmentPicker } from "./order-form-equipment";
+import OrderAttachments from "./OrderAttachments";
 
 type Props =
   | {
@@ -815,6 +816,12 @@ export default function OrderForm(props: Props) {
               onDraftChange={setNoteDraft}
             />
           </Section>
+
+          {!isCreate && (initial as OrderShape) && (
+            <Section title="Attachments" subtitle="Intake forms, signed delivery tickets, insurance docs. Stored encrypted with the order.">
+              <OrderAttachments orderId={(initial as OrderShape).id} />
+            </Section>
+          )}
 
           {!isCreate && (initial as OrderShape) && (
             <Section title="History" subtitle="">

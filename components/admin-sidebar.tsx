@@ -11,6 +11,7 @@ import {
   LifeBuoy,
   ListChecks,
   BarChart3,
+  Package,
   Menu,
   X,
 } from "lucide-react";
@@ -34,6 +35,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { label: "Tracker",       href: "/tracker",       icon: <ListChecks size={18} />,         roles: ["supplier", "dispatcher", "csr"] },
   { label: "Reporting",     href: "/reporting",     icon: <BarChart3 size={18} />,          roles: ["supplier"] },
+  { label: "Inventory",     href: "/inventory",     icon: <Package size={18} />,            roles: ["supplier", "dispatcher"] },
   { label: "Configuration", href: "/configuration", icon: <SlidersHorizontal size={18} />,  roles: ["supplier"] },
   { label: "Users",         href: "/users",         icon: <Users size={18} />,              roles: ["supplier"] },
   { label: "Audit Log",     href: "/audit-log",     icon: <ClipboardList size={18} />,      roles: ["supplier"] },
