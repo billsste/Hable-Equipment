@@ -48,10 +48,11 @@ export async function POST(request: Request) {
 
     // ─── MFA step ────────────────────────────────────────────────────────────
     // Password is correct; if the user has MFA enabled, do NOT issue the
-    // session cookie. Issue a short-lived signed challenge cookie that only
-    // /api/auth/mfa/verify accepts, then let the client prompt for the code.
+    // session cookie and do NOT clear the lockout counter — the login is not
+    // complete until /api/auth/mfa/verify succeeds. Wiping the counter here
+    // would let an attacker reset it before brute-forcing TOTP. Instead, issue
+    // a short-lived signed challenge cookie that only /mfa/verify accepts.
     if (user.mfaEnabled) {
-      await clearAttempts(email);
       const challenge = createChallengeToken(user.id);
       const response = NextResponse.json({ mfaRequired: true });
       response.cookies.set(MFA_CHALLENGE_COOKIE, challenge, {

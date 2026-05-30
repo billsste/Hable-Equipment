@@ -115,7 +115,12 @@ model TicketAudit {
 model SerialItem {
   id          String        @id @default(cuid())
   equipmentId String
-  equipment   Equipment     @relation(fields: [equipmentId], references: [id])
+  // Restrict on Equipment delete — physical units shouldn't silently vanish
+  // when an equipment SKU is removed; force the supplier to reassign or
+  // retire the serials first. The legacy InventoryItem→SerialItem relation
+  // was Cascade, which is unsafe now that serials are the source of truth
+  // for inventory counts. Made explicit (not relying on Prisma's default).
+  equipment   Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
   sn          String        @unique
   status      SerialStatus  @default(available)
   location    String        @default("Warehouse")

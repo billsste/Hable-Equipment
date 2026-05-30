@@ -22,8 +22,33 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   } | null;
   if (!body) return NextResponse.json({ error: "Bad request." }, { status: 400 });
 
+  // Runtime-validate any string fields before calling .slice on them — a TS
+  // `as` cast doesn't gate non-string JSON bodies (number, object, array) and
+  // would otherwise throw TypeError → 500.
+  if (body.location !== undefined && typeof body.location !== "string") {
+    return NextResponse.json({ error: "location must be a string." }, { status: 400 });
+  }
+  if (body.notes !== undefined && typeof body.notes !== "string") {
+    return NextResponse.json({ error: "notes must be a string." }, { status: 400 });
+  }
+  if (body.orderId !== undefined && body.orderId !== null && typeof body.orderId !== "string") {
+    return NextResponse.json({ error: "orderId must be a string or null." }, { status: 400 });
+  }
+
   const existing = await db.serialItem.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found." }, { status: 404 });
+
+  // If linking to an order, confirm it exists rather than letting Prisma raise
+  // a 500 on the FK constraint. Skipped when body.orderId is null (unassign).
+  if (body.orderId) {
+    const orderExists = await db.order.findUnique({
+      where: { id: body.orderId },
+      select: { id: true },
+    });
+    if (!orderExists) {
+      return NextResponse.json({ error: "Order not found." }, { status: 404 });
+    }
+  }
 
   const data: Record<string, unknown> = {};
   if (body.status !== undefined) {
@@ -38,10 +63,18 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       data.retiredAt = null;
       data.orderId = null;
     }
+    // A serial moved to retired or out_of_service is no longer with the
+    // customer it was deployed to — clear the FK so order↔serial joins stay
+    // honest and the par-level "deployed" count doesn't double-count.
+    if (body.status === "retired" || body.status === "out_of_service") {
+      data.orderId = null;
+    }
   }
   if (body.location !== undefined) data.location = body.location.slice(0, LOC_MAX);
   if (body.notes !== undefined) data.notes = body.notes.slice(0, NOTES_MAX);
-  if (body.orderId !== undefined) data.orderId = body.orderId; // null = unassign
+  // Explicit orderId in body wins (allows manual reassignment); status-driven
+  // clearing above is the default when only status is sent.
+  if (body.orderId !== undefined) data.orderId = body.orderId;
 
   const updated = await db.serialItem.update({ where: { id }, data });
 

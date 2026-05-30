@@ -80,21 +80,25 @@ const DATE_PRESETS: { key: DatePreset; label: string }[] = [
   { key: "ytd", label: "YTD" },
 ];
 
-// Compute the from/to ISO date range for a preset, using the user's local
-// midnight boundaries. Returns null for "all" (no filter) and "custom".
+// Compute the from/to ISO date range for a preset using UTC boundaries — the
+// Order Date column and CSV both render createdAt in UTC (timeZone: "UTC")
+// and the filter compares against createdAt.slice(0,10) which is the UTC
+// date. Computing the range in local time would let a late-night order in a
+// non-UTC timezone match the filter while displaying a different calendar
+// date in the column. UTC everywhere keeps filter / column / CSV consistent.
 function resolveDatePreset(key: DatePreset): { from: string; to: string } | null {
   if (key === "all" || key === "custom") return null;
   const now = new Date();
-  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   let from = new Date(to);
-  if (key === "7d") from.setDate(to.getDate() - 6);
-  else if (key === "30d") from.setDate(to.getDate() - 29);
-  else if (key === "90d") from.setDate(to.getDate() - 89);
-  else if (key === "ytd") from = new Date(now.getFullYear(), 0, 1);
+  if (key === "7d") from.setUTCDate(to.getUTCDate() - 6);
+  else if (key === "30d") from.setUTCDate(to.getUTCDate() - 29);
+  else if (key === "90d") from.setUTCDate(to.getUTCDate() - 89);
+  else if (key === "ytd") from = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
   return { from: toIsoDay(from), to: toIsoDay(to) };
 }
 function toIsoDay(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 export default function TrackerClient({ currentUser, initialOrders, initialView, initialNew, lookups }: Props) {

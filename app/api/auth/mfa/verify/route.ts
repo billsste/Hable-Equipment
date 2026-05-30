@@ -3,6 +3,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
   createSession,
+  getLockoutRemaining,
   recordFailedAttempt,
   clearAttempts,
 } from "@/lib/auth";
@@ -54,6 +55,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "MFA not configured." }, { status: 400 });
   }
 
+  // Enforce the standard 5-attempt lockout window on the MFA step itself.
+  // /api/auth/login no longer clears the counter on its way to challenge, so
+  // brute-forcing TOTP here will trip the lockout and stay tripped.
+  const lockoutRemainingMs = await getLockoutRemaining(row.email);
+  if (lockoutRemainingMs > 0) {
+    const minutes = Math.ceil(lockoutRemainingMs / 60000);
+    return NextResponse.json(
+      { error: `Account locked. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.` },
+      { status: 429 },
+    );
+  }
+
   let usedBackup = false;
   let ok = false;
 
@@ -62,13 +75,21 @@ export async function POST(request: Request) {
   } else if (backupCode) {
     const matched = findBackupCodeHash(backupCode, row.mfaBackupCodes);
     if (matched) {
-      usedBackup = true;
-      // Atomically consume the used backup code so it can't be replayed.
-      await db.user.update({
-        where: { id: row.id },
-        data: { mfaBackupCodes: row.mfaBackupCodes.filter((h) => h !== matched) },
-      });
-      ok = true;
+      // Atomically remove the matched hash from the user's mfaBackupCodes
+      // array using a single SQL statement with a guard. If two concurrent
+      // requests race the same code, only one returns rowcount=1; the other
+      // sees the guard fail and falls through to recordFailedAttempt.
+      // PostgreSQL's array_remove + ANY(...) does the check-and-remove in one
+      // atomic update — no read-modify-write window.
+      const affected = await db.$executeRaw`
+        UPDATE "User"
+        SET "mfaBackupCodes" = array_remove("mfaBackupCodes", ${matched})
+        WHERE "id" = ${row.id} AND ${matched} = ANY("mfaBackupCodes")
+      `;
+      if (affected === 1) {
+        usedBackup = true;
+        ok = true;
+      }
     }
   } else {
     return NextResponse.json({ error: "Provide a code." }, { status: 400 });

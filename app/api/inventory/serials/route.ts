@@ -76,12 +76,17 @@ export async function POST(request: Request) {
   const toCreate = clean.filter((s) => !taken.has(s));
 
   if (toCreate.length > 0) {
+    // skipDuplicates handles the race where two concurrent bulk-adds both
+    // see the same `existing` snapshot — the second batch silently drops
+    // rows that the first batch just inserted instead of throwing P2002 and
+    // aborting the whole transaction.
     await db.serialItem.createMany({
       data: toCreate.map((sn) => ({
         equipmentId: equipment.id,
         sn,
         location,
       })),
+      skipDuplicates: true,
     });
   }
 

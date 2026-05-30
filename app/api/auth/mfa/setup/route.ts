@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   const row = await db.user.findUnique({
     where: { id: user.id },
-    select: { mfaEnabled: true },
+    select: { mfaEnabled: true, mfaSecret: true },
   });
   if (row?.mfaEnabled) {
     return NextResponse.json(
@@ -26,11 +26,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const secret = generateSecret();
-  await db.user.update({
-    where: { id: user.id },
-    data: { mfaSecret: secret, mfaBackupCodes: [], mfaEnrolledAt: null },
-  });
+  // Reuse the existing pending secret if one is already pending — calling
+  // /setup again (e.g. the user reopens the enrollment modal) must NOT
+  // silently rotate the secret, or the QR they already scanned into their
+  // authenticator will go stale and they'll be unable to enroll. Rotation
+  // only happens on the first /setup call before a secret exists.
+  const secret = row?.mfaSecret ?? generateSecret();
+  if (!row?.mfaSecret) {
+    await db.user.update({
+      where: { id: user.id },
+      data: { mfaSecret: secret, mfaBackupCodes: [], mfaEnrolledAt: null },
+    });
+  }
 
   const url = otpauthUrl({ secret, account: user.email, issuer: "EquipDispatch" });
   const qrDataUrl = await QRCode.toDataURL(url, { margin: 1, width: 240 });
