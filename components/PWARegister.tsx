@@ -56,22 +56,32 @@ export function PWARegister() {
   if (!showPrompt || !installEvent) return null;
 
   return (
+    <>
+      {/* Reserve space at the bottom of the document while the install card is
+          mounted so it never overlays the last row/cards of the page. The
+          extra space is taller than the card itself so tap targets stay
+          comfortably above it on touch devices. */}
+      <style>{`body { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px) !important; }`}</style>
     <div
+      // calc(env(safe-area-inset-bottom) + 16px) lifts the card above the
+      // iOS home-indicator. The wrapper card was previously overlapping the
+      // first tracker row on narrow viewports; we now nudge it a bit higher
+      // and trim its size so it sits clearly off content.
       style={{
         position: "fixed",
-        bottom: 16,
+        bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
         left: 16,
         right: 16,
-        maxWidth: 400,
+        maxWidth: 380,
         margin: "0 auto",
         backgroundColor: "#fff",
         borderRadius: 12,
         border: "1px solid #e5edf5",
         boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
-        padding: "14px 16px",
+        padding: "12px 14px",
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: 10,
         zIndex: 9999,
         fontFamily: "system-ui, -apple-system, sans-serif",
       }}
@@ -133,5 +143,6 @@ export function PWARegister() {
         Install
       </button>
     </div>
+    </>
   );
 }
