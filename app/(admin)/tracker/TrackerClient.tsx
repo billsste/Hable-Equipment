@@ -456,26 +456,30 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
         </div>
         <div className="hidden md:block" style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+            {/* Column order is intentional: identity → who → where → when
+                (both dates together) → status → owners (both people together).
+                Dates sit next to each other so the user can scan urgency
+                without jumping across the row. */}
             <colgroup>
               <col style={{ width: 130 }} />
-              <col style={{ width: 110 }} />
               <col style={{ width: "18%" }} />
               <col style={{ width: "20%" }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 130 }} />
               <col style={{ width: 150 }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: "12%" }} />
-              <col style={{ width: 130 }} />
             </colgroup>
             <thead>
               <tr style={{ background: "#f6f9fc", borderBottom: "1px solid #e5edf5" }}>
                 <Th sortKey="orderNumber" sort={sort} onSort={toggleSort}>Order #</Th>
-                <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
                 <Th sortKey="patient" sort={sort} onSort={toggleSort}>Patient</Th>
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
+                <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
+                <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Discharge Date</Th>
                 <Th sortKey="stage" sort={sort} onSort={toggleSort}>Stage</Th>
                 <Th sortKey="csr" sort={sort} onSort={toggleSort}>CSR</Th>
                 <Th sortKey="dispatcher" sort={sort} onSort={toggleSort}>Dispatcher</Th>
-                <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Discharge Date</Th>
               </tr>
             </thead>
             <tbody>
@@ -533,6 +537,9 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
       onMouseEnter={(e) => (e.currentTarget.style.background = "#f6f9fc")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
     >
+      {/* Cell order mirrors the <colgroup>/<thead> contract above:
+          Order # → Patient → Facility → Order Date → Discharge Date →
+          Stage → CSR → Dispatcher. Don't reorder one without the other two. */}
       <Td>
         <div
           style={{
@@ -545,11 +552,6 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
         >
           {order.orderNumber}
         </div>
-      </Td>
-      <Td>
-        <span style={{ color: "#273951", fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
-          {formatOrderDate(order.createdAt)}
-        </span>
       </Td>
       <Td>
         <div
@@ -578,6 +580,21 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
           >
             {order.facilityName}
           </div>
+        ) : (
+          <Muted>—</Muted>
+        )}
+      </Td>
+      <Td>
+        <span style={{ color: "#273951", fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
+          {formatOrderDate(order.createdAt)}
+        </span>
+      </Td>
+      <Td>
+        {order.dischargeDate ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#273951", fontWeight: 500, fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
+            <span>{dcInfo.dateLabel}</span>
+            {mounted && dcBlocker && <BlockerChip blocker={dcBlocker} />}
+          </span>
         ) : (
           <Muted>—</Muted>
         )}
@@ -634,16 +651,6 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
           </span>
         ) : (
           <Muted>Unassigned</Muted>
-        )}
-      </Td>
-      <Td>
-        {order.dischargeDate ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#273951", fontWeight: 500, fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
-            <span>{dcInfo.dateLabel}</span>
-            {mounted && dcBlocker && <BlockerChip blocker={dcBlocker} />}
-          </span>
-        ) : (
-          <Muted>—</Muted>
         )}
       </Td>
     </tr>
@@ -826,22 +833,24 @@ function formatDc(iso: string | null): { dateLabel: string; urgency: DcUrgency }
 }
 
 function exportCsv(rows: OrderShape[]): void {
-  // Order Date leads the row so it's the leftmost column in Excel after the
-  // unique Order # — matches how clients typically sort the printed list.
+  // Column order mirrors the on-screen table so users see the same row layout
+  // whether they're scanning live, printed, or opened in Excel.
+  // Extra columns (Auth, Insurance, Companies, Items) tail after the visible
+  // ones — they don't show in the table but are useful in spreadsheet form.
   const header = [
-    "Order #", "Order Date", "Patient", "Facility", "Stage", "CSR", "Dispatcher",
-    "Discharge", "Authorization Status", "Primary Insurance", "Companies",
-    "Items",
+    "Order #", "Patient", "Facility", "Order Date", "Discharge",
+    "Stage", "CSR", "Dispatcher",
+    "Authorization Status", "Primary Insurance", "Companies", "Items",
   ];
   const data = rows.map((o) => [
     o.orderNumber,
-    new Date(o.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" }),
     o.patientDisplay,
     o.facilityName ?? "",
+    new Date(o.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" }),
+    o.dischargeDate ? new Date(o.dischargeDate).toLocaleDateString("en-US", { timeZone: "UTC" }) : "",
     STAGE_LABELS[o.stage],
     o.csrName ?? "",
     o.dispatcherName ?? "",
-    o.dischargeDate ? new Date(o.dischargeDate).toLocaleDateString("en-US", { timeZone: "UTC" }) : "",
     AUTH_LABELS[o.authStatus],
     o.primaryInsuranceKey ?? "",
     o.fulfillmentCompanies.join("; "),
