@@ -1,7 +1,11 @@
 // EquipDispatch — service worker
 // Strategy: network-first for navigation/API (fresh data wins for HIPAA), cache-first for static assets.
 
-const VERSION = "ed-v3";
+// Bump on every deploy that ships a new app shell or JS bundle. The activate
+// handler nukes every cache that doesn't match the current STATIC/RUNTIME
+// keys, so a version change forces existing clients to pull fresh assets
+// instead of running stale chunks from earlier sessions.
+const VERSION = "ed-v4";
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

@@ -177,7 +177,11 @@ export default function OrderForm(props: Props) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? "Could not create order.");
+        // Surface the HTTP status when the server response is missing an
+        // `error` field (e.g. an unexpected 5xx or a stale client bundle
+        // talking to a newer endpoint). Generic "Could not create order"
+        // alone leaves the user with nothing actionable.
+        setError(data.error ?? `Could not create order (HTTP ${res.status}). Try reloading the page.`);
         return;
       }
       setJustSaved(true);
@@ -230,7 +234,7 @@ export default function OrderForm(props: Props) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? "Could not save order.");
+        setError(data.error ?? `Could not save order (HTTP ${res.status}). Try reloading the page.`);
         return;
       }
       setJustSaved(true);
@@ -260,7 +264,7 @@ export default function OrderForm(props: Props) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? "Could not create pickup.");
+        setError(data.error ?? `Could not create pickup (HTTP ${res.status}). Try reloading the page.`);
         return;
       }
       setJustSaved(true);
