@@ -33,7 +33,9 @@ export async function GET(request: Request) {
         active: true,
         OR: [
           { role: "driver" },
-          { role: "dispatcher" },
+          // Some accounts may still carry "dispatcher" in their multi-role
+          // roles[] array even after commit B retired the enum value — keep
+          // them visible to the picker.
           { roles: { has: "driver" } },
           { roles: { has: "dispatcher" } },
         ],

@@ -27,20 +27,16 @@ model User {
   createdTickets  Ticket[]  @relation("CreatedBy")
   assignedTickets Ticket[]  @relation("AssignedTo")
   csrOrders       Order[]   @relation("OrderCsr")
-  dispatcherOrders Order[]  @relation("OrderDispatcher")
   driverItems     OrderItem[] @relation("OrderItemDriver")
   intakeOrders    Order[]   @relation("OrderIntakeBy")
   uploadedAttachments OrderAttachment[] @relation("OrderAttachmentUploadedBy")
 }
 
+// `driver` replaced `dispatcher` per Brent's call (2026-06). Phase 1A's
+// backfill renamed every existing user row; commit B drops the legacy value.
 enum UserRole {
   supplier
-  // `driver` replaces `dispatcher` per Brent's call (2026-06). `dispatcher`
-  // is retained for back-compat in this commit; the backfill in
-  // prisma/backfills/ migrates existing rows. A follow-up migration drops
-  // the dispatcher value once nothing references it.
   driver
-  dispatcher
   csr
 }
 
@@ -185,6 +181,8 @@ model AuditEntry {
 
 // Stage = where the order is in the lifecycle. Status is DERIVED from
 // timestamps + populated fields, never picked manually.
+// ELDERCARE folded into the eldercare boolean per Brent (2026-06); the
+// Phase 1A backfill migrated SERVICE_PICKUP → PICK_UP. Commit B drops both.
 enum WorkOrderType {
   DELIVERY
   SERVICE_CALL
@@ -192,8 +190,6 @@ enum WorkOrderType {
   EQUIPMENT_MOVE
   EXCHANGE
   FACILITY_DELIVERY
-  ELDERCARE
-  SERVICE_PICKUP
 }
 
 enum OrderStage {
@@ -232,23 +228,8 @@ enum VerificationStatus {
   TRANSFERRED
 }
 
-enum DataEntryStatus {
-  NOT_STARTED
-  PT
-  CLINICAL
-  INS
-  DT
-  SERIAL
-  ENTRY_COMPLETE
-  ENTERED_FOR_WRITE_OFF
-}
-
-enum BillingStatus {
-  PENDING
-  CLAIM_DROPPED
-  DEDUCT_HOLD
-  WROTE_OFF
-}
+// Brent 2026-06 commit B: DataEntryStatus / BillingStatus / PlanType enums
+// removed alongside their Order columns.
 
 enum DeductibleStatus {
   MET
@@ -260,12 +241,6 @@ enum HandlerType {
   INTERNAL
   REP
   FACILITY
-}
-
-enum PlanType {
-  HMO
-  HMO_POS
-  PPO
 }
 
 enum OutcomeStatus {
@@ -304,17 +279,14 @@ model Order {
   deductibleStatus      DeductibleStatus?
   coinsurancePct        Int?              // patient coinsurance share, whole percent (e.g. 20, 35)
   deductibleAmount      Decimal?  @db.Decimal(10, 2)  // patient deductible owed, dollars
-  planMemberId          String?           // member/plan ID (e.g. 10183281800) — identifier, kept as string
-  planName              String?           // full plan name (e.g. "HAP Medicare Superior (HMO) Individual Plan 028")
-  planType              PlanType?         // plan category — HMO, HMO/POS, PPO
+  // Brent 2026-06 commit B: planMemberId / planName / planType / dataEntryStatus
+  // / billingStatus removed — replaced by the simpler verification flow.
   authStatus            AuthStatus  @default(NOT_REQ)
   authRequiredAt        DateTime?
   authSubmittedAt       DateTime?
   authApprovedAt        DateTime?
   authDeniedAt          DateTime?
   dosSubmitted          DateTime?
-  dataEntryStatus       DataEntryStatus?
-  billingStatus         BillingStatus?
 
   fulfillmentCompanies  String[] @default([]) // multi-select keys (real fulfillment companies only)
   status                OutcomeStatus @default(ACTIVE) // outcome state — ACTIVE | ON_HOLD | TRANSFERRED | REJECTED | CANCELLED | DELIVERED | WRITE_OFF
@@ -339,13 +311,12 @@ model Order {
   // Order Date = createdAt (auto-stamped, never user-entered)
 
   // ── Stage 2/3/4/5 ──
-  dispatcherId    Int?
-  dispatcher      User?       @relation("OrderDispatcher", fields: [dispatcherId], references: [id])
+  // Brent 2026-06 commit B: dispatcherId / dispatcher relation / deliveredAt
+  // dropped — per-item driver + completedAt on OrderItem replace them.
   printedAt       DateTime?
   acknowledgedAt  DateTime?
   outForDeliveryAt DateTime?
   doorTaggedAt    DateTime?
-  deliveredAt     DateTime?
   cancelledAt     DateTime?
   cancellationReason String?
 
@@ -364,7 +335,6 @@ model Order {
   attachments     OrderAttachment[]
 
   @@index([stage])
-  @@index([dispatcherId])
   @@index([csrId])
   @@index([dischargeDate])
   @@index([workOrderType])

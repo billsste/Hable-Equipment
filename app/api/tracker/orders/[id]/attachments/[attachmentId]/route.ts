@@ -7,7 +7,7 @@ import { logAudit } from "@/lib/audit";
 // filename via Content-Disposition so the download dialog uses the right
 // name and extension.
 export async function GET(request: Request, ctx: { params: Promise<{ id: string; attachmentId: string }> }) {
-  const guard = await requireRole(request, ["supplier", "csr", "driver", "dispatcher"]);
+  const guard = await requireRole(request, ["supplier", "csr", "driver"]);
   if ("error" in guard) return guard.error;
   const { id, attachmentId } = await ctx.params;
 
@@ -32,7 +32,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string;
 }
 
 export async function DELETE(request: Request, ctx: { params: Promise<{ id: string; attachmentId: string }> }) {
-  const guard = await requireRole(request, ["supplier", "csr", "driver", "dispatcher"]);
+  const guard = await requireRole(request, ["supplier", "csr", "driver"]);
   if ("error" in guard) return guard.error;
   const { id, attachmentId } = await ctx.params;
   // Skip the bytea `data` column — we only need filename/orderNumber for the

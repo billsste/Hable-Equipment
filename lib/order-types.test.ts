@@ -20,12 +20,12 @@ const baseStageInput: StageInput = {
   whatsNeeded: [],
   primaryInsuranceKey: null,
   authStatus: "NOT_REQ",
-  dispatcherId: null,
+  anyItemAssigned: false,
+  allItemsCompleted: false,
   printedAt: null,
   acknowledgedAt: null,
   outForDeliveryAt: null,
   doorTaggedAt: null,
-  deliveredAt: null,
   cancelledAt: null,
 };
 
@@ -86,11 +86,11 @@ describe("deriveStage", () => {
     ).toBe("INTAKE_OFF_RIP");
   });
 
-  it("advances to ASSIGNED once printed with a dispatcher", () => {
+  it("advances to ASSIGNED once printed with at least one driver-assigned item", () => {
     expect(
       deriveStage({
         ...baseStageInput,
-        dispatcherId: 7,
+        anyItemAssigned: true,
         printedAt: new Date(),
       }),
     ).toBe("ASSIGNED");
@@ -131,9 +131,9 @@ describe("deriveStage", () => {
     ).toBe("OUT_FOR_DELIVERY");
   });
 
-  it("collapses to DELIVERED on a delivered timestamp", () => {
+  it("collapses to DELIVERED when every item is completed", () => {
     expect(
-      deriveStage({ ...baseStageInput, deliveredAt: new Date() }),
+      deriveStage({ ...baseStageInput, allItemsCompleted: true }),
     ).toBe("DELIVERED");
   });
 
@@ -230,7 +230,5 @@ describe("isServiceCallType", () => {
     expect(isServiceCallType("EQUIPMENT_MOVE")).toBe(true);
     expect(isServiceCallType("EXCHANGE")).toBe(true);
     expect(isServiceCallType("FACILITY_DELIVERY")).toBe(true);
-    expect(isServiceCallType("ELDERCARE")).toBe(true);
-    expect(isServiceCallType("SERVICE_PICKUP")).toBe(true);
   });
 });

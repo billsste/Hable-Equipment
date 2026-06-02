@@ -15,7 +15,7 @@ export default async function InventoryPage() {
 
   const me = await db.user.findUnique({ where: { id: session.userId } });
   if (!me) redirect("/login");
-  if (me.role !== "supplier" && me.role !== "driver" && me.role !== "dispatcher") redirect("/tracker");
+  if (me.role !== "supplier" && me.role !== "driver") redirect("/tracker");
 
   // One query, two views: pull active item-kind equipment with their serials
   // included, then derive both the stock-by-equipment summary and the flat

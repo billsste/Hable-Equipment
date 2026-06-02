@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Download, Loader2, Pencil, Plus, RotateCcw, Trash2, Users, X } from "lucide-react";
 import { downloadCsv } from "@/lib/utils";
 
-type UserRole = "supplier" | "dispatcher" | "csr";
+type UserRole = "supplier" | "driver" | "csr";
 export type SafeUser = {
   id: number;
   name: string;
@@ -14,18 +14,18 @@ export type SafeUser = {
   active: boolean;
 };
 
-const ALL_ROLES: UserRole[] = ["csr", "dispatcher", "supplier"];
+const ALL_ROLES: UserRole[] = ["csr", "driver", "supplier"];
 
 const ROLE_LABELS: Record<UserRole, string> = {
-  supplier:   "Admin",
-  csr:        "CSR",
-  dispatcher: "Dispatcher",
+  supplier: "Admin",
+  csr:      "CSR",
+  driver:   "Driver",
 };
 
 const ROLE_COLORS: Record<UserRole, { bg: string; color: string }> = {
-  supplier:   { bg: "rgba(83,58,253,0.10)",  color: "#4434d4" },
-  csr:        { bg: "rgba(40,116,173,0.14)", color: "#2874ad" },
-  dispatcher: { bg: "rgba(155,104,41,0.14)", color: "#9b6829" },
+  supplier: { bg: "rgba(83,58,253,0.10)",  color: "#4434d4" },
+  csr:      { bg: "rgba(40,116,173,0.14)", color: "#2874ad" },
+  driver:   { bg: "rgba(155,104,41,0.14)", color: "#9b6829" },
 };
 
 export default function UsersClient({
@@ -477,7 +477,7 @@ function AddUserModal({
               className="w-full px-3 py-2 text-[13px] outline-none"
               style={{ border: "1px solid #e5edf5", borderRadius: 4, color: "#061b31", background: "#ffffff" }}>
               <option value="csr">CSR (Customer Service Rep)</option>
-              <option value="dispatcher">Dispatcher</option>
+              <option value="driver">Driver</option>
               <option value="supplier">Admin (Full Access)</option>
             </select>
           </div>
@@ -486,7 +486,7 @@ function AddUserModal({
               Additional Roles <span style={{ color: "#64748d", fontWeight: 400 }}>(optional)</span>
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {(["csr", "dispatcher", "supplier"] as UserRole[])
+              {(["csr", "driver", "supplier"] as UserRole[])
                 .filter((r) => r !== role)
                 .map((r) => {
                   const checked = extraRoles.includes(r);
@@ -644,7 +644,7 @@ function EditUserModal({
               className="w-full px-3 py-2 text-[13px] outline-none disabled:opacity-60"
               style={{ border: "1px solid #e5edf5", borderRadius: 4, color: "#061b31", background: "#ffffff" }}>
               <option value="csr">CSR (Customer Service Rep)</option>
-              <option value="dispatcher">Dispatcher</option>
+              <option value="driver">Driver</option>
               <option value="supplier">Admin (Full Access)</option>
             </select>
             {isSelf && (

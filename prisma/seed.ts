@@ -43,7 +43,7 @@ async function main() {
     update: {
       name: "Stee Suite",
       role: "supplier",
-      roles: ["supplier", "csr", "dispatcher"],
+      roles: ["supplier", "csr", "driver"],
       active: true,
     },
     create: {
@@ -51,7 +51,7 @@ async function main() {
       email: "stee@equipdispatch.com",
       password: "Admin123!",
       role: "supplier",
-      roles: ["supplier", "csr", "dispatcher"],
+      roles: ["supplier", "csr", "driver"],
       active: true,
     },
   });
@@ -61,36 +61,36 @@ async function main() {
     const isOverlap = MULTI_ROLE_OVERLAPS.has(u.name);
     await db.user.upsert({
       where: { email: u.email },
-      update: { name: u.name, role: "csr", roles: isOverlap ? ["csr", "dispatcher"] : ["csr"], active: true },
+      update: { name: u.name, role: "csr", roles: isOverlap ? ["csr", "driver"] : ["csr"], active: true },
       create: {
         name: u.name,
         email: u.email,
         password: "Equip2026!",
         role: "csr",
-        roles: isOverlap ? ["csr", "dispatcher"] : ["csr"],
+        roles: isOverlap ? ["csr", "driver"] : ["csr"],
         active: true,
       },
     });
   }
   console.log(`Seeded ${CSRS.length} CSRs`);
 
-  // ── Dispatcher users (skip overlaps already seeded as multi-role above) ──
+  // ── Driver users (formerly dispatchers; renamed per Brent 2026-06 commit B).
   for (const u of DISPATCHERS) {
     if (MULTI_ROLE_OVERLAPS.has(u.name)) continue;
     await db.user.upsert({
       where: { email: u.email },
-      update: { name: u.name, role: "dispatcher", roles: ["dispatcher"], active: true },
+      update: { name: u.name, role: "driver", roles: ["driver"], active: true },
       create: {
         name: u.name,
         email: u.email,
         password: "Equip2026!",
-        role: "dispatcher",
-        roles: ["dispatcher"],
+        role: "driver",
+        roles: ["driver"],
         active: true,
       },
     });
   }
-  console.log(`Seeded ${DISPATCHERS.length} dispatchers`);
+  console.log(`Seeded ${DISPATCHERS.length} drivers`);
 
   // ── Facilities (63+) ──
   // Preserve existing facility IDs by name, then add anything missing.
@@ -230,7 +230,7 @@ function keyFor(category: string, name: string): string {
 
 async function seedDemoOrders(limit?: number) {
   const csrs = await db.user.findMany({ where: { roles: { has: "csr" } } });
-  const dispatchers = await db.user.findMany({ where: { roles: { has: "dispatcher" } } });
+  const dispatchers = await db.user.findMany({ where: { roles: { has: "driver" } } });
   const facilities = await db.facility.findMany();
   const equipment = await db.equipment.findMany({ where: { active: true } });
   if (csrs.length === 0 || facilities.length === 0 || equipment.length === 0) return;
@@ -546,19 +546,17 @@ async function seedDemoOrders(limit?: number) {
           deductibleStatus: d.deductible ?? null,
           coinsurancePct: d.coinsurancePct ?? null,
           deductibleAmount: d.deductibleAmount ?? null,
-          planMemberId: d.planMemberId ?? null,
-          planName: d.planName ?? null,
-          planType: d.planType ?? null,
+          // Brent 2026-06 commit B: planMemberId / planName / planType /
+          // dispatcherId / deliveredAt dropped from Order. Per-item driver
+          // and completedAt are set on items[] below.
           authStatus: d.auth ?? "NOT_REQ",
           authRequiredAt: d.auth === "REQUIRED" || d.auth === "APPROVED" ? createdAt : null,
           authApprovedAt: d.auth === "APPROVED" ? createdAt : null,
           fulfillmentCompanies: d.companies ?? [],
           dischargeDate: d.dcDays !== undefined ? daysFromNow(d.dcDays) : null,
-          dispatcherId: dispatcher?.id ?? null,
           printedAt,
           acknowledgedAt,
           outForDeliveryAt,
-          deliveredAt,
           cancelledAt,
           cancellationReason: d.cancellationReason ?? null,
           notes: d.notes ?? "",

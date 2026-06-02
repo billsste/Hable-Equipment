@@ -29,7 +29,7 @@ export default async function SchedulePage({
 
   const me = await db.user.findUnique({ where: { id: session.userId } });
   if (!me) redirect("/login");
-  if (me.role !== "supplier" && me.role !== "driver" && me.role !== "dispatcher") redirect("/tracker");
+  if (me.role !== "supplier" && me.role !== "driver") redirect("/tracker");
 
   const sp = await searchParams;
   const date = parseDate(sp.date);

@@ -37,8 +37,12 @@ export default async function TrackerPage({
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       }),
+      // Driver list. "dispatcher" stays in some legacy roles[] arrays.
       db.user.findMany({
-        where: { roles: { has: "dispatcher" }, active: true },
+        where: {
+          active: true,
+          OR: [{ role: "driver" }, { roles: { has: "driver" } }, { roles: { has: "dispatcher" } }],
+        },
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       }),

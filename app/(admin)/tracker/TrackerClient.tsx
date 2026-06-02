@@ -372,10 +372,10 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           value={typeFilter}
           onChange={setTypeFilter}
           placeholder="All types"
-          options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[])
-            // Drop deprecated types from the filter picker too.
-            .filter((k) => k !== "ELDERCARE" && k !== "SERVICE_PICKUP")
-            .map((k) => ({ value: k, label: WORK_ORDER_TYPE_LABELS[k] }))}
+          options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
+            value: k,
+            label: WORK_ORDER_TYPE_LABELS[k],
+          }))}
         />
         <FilterSelect
           value={verificationFilter}

@@ -15,7 +15,7 @@ type Me = {
   id: number;
   name: string;
   email: string;
-  role: "supplier" | "dispatcher" | "csr";
+  role: "supplier" | "driver" | "csr";
 };
 
 type SupportTab = "new" | "history";

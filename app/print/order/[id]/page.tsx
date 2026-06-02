@@ -3,7 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { SESSION_COOKIE, getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ORDER_INCLUDE, toOrderShape } from "@/lib/order-helpers";
-import { AUTH_LABELS, PLAN_TYPE_LABELS, STAGE_LABELS } from "@/lib/order-types";
+import { AUTH_LABELS, STAGE_LABELS } from "@/lib/order-types";
 import PrintTrigger from "./PrintTrigger";
 
 export const dynamic = "force-dynamic";
@@ -95,11 +95,16 @@ export default async function PrintOrderPage({
         {/* Key dates + people */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
           <Field label="Discharge Date" value={dcDate} highlight />
-          <Field label="Dispatcher" value={order.dispatcherName ?? "Unassigned"} />
+          {/* Brent 2026-06 commit B: per-item drivers replace order-level
+              Dispatcher. Show a deduped driver list, or "Unassigned". */}
+          <Field label="Driver(s)" value={
+            (() => {
+              const names = Array.from(new Set(order.items.map((it) => it.driverName).filter((n): n is string => !!n)));
+              return names.length ? names.join(", ") : "Unassigned";
+            })()
+          } />
           <Field label="CSR" value={order.csrName ?? "—"} />
           <Field label="Primary Insurance" value={order.primaryInsuranceKey ?? "—"} />
-          <Field label="Plan" value={order.planName ?? (order.planType ? PLAN_TYPE_LABELS[order.planType] : "—")} />
-          <Field label="Plan ID" value={order.planMemberId ?? "—"} />
           <Field label="Authorization" value={AUTH_LABELS[order.authStatus]} />
           <Field label="Handler" value={order.handler ?? "—"} />
           <Field

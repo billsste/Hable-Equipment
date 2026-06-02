@@ -25,13 +25,13 @@ import {
 } from "@/lib/order-types";
 
 const VALID_WORK_ORDER_TYPES = Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[];
-import type { AuthStatus, BillingStatus, DataEntryStatus, DeductibleStatus, HandlerType, OutcomeStatus, PlanType, Prisma, WorkOrderType } from "@prisma/client";
+import type { AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, Prisma, WorkOrderType } from "@prisma/client";
 
 const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE", "ON_HOLD", "LOOSE_ENDS", "TRANSFERRED", "REJECTED", "CANCELLED", "DELIVERED", "WRITE_OFF",
 ];
 
-const ALLOWED_PATCH_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver", "dispatcher"];
+const ALLOWED_PATCH_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver"];
 
 type Event = OrderEventInput;
 
@@ -82,12 +82,10 @@ export async function PATCH(
   let nextWhatsNeeded: string[] = existing.whatsNeeded;
   let nextPrimary: string | null = existing.primaryInsuranceKey;
   let nextAuth: AuthStatus = existing.authStatus;
-  let nextDispatcherId: number | null = existing.dispatcherId;
   let nextPrintedAt: Date | null = existing.printedAt;
   let nextAckAt: Date | null = existing.acknowledgedAt;
   let nextOutAt: Date | null = existing.outForDeliveryAt;
   let nextDoorTaggedAt: Date | null = existing.doorTaggedAt;
-  let nextDeliveredAt: Date | null = existing.deliveredAt;
   let nextCancelledAt: Date | null = existing.cancelledAt;
   let nextWorkOrderType: WorkOrderType = existing.workOrderType;
 
@@ -110,10 +108,8 @@ export async function PATCH(
   // change doesn't add its own DB round-trip.
   const newCsrId = "csrId" in body ? pickInt(body.csrId) : undefined;
   const newFacilityId = "facilityId" in body ? pickInt(body.facilityId) : undefined;
-  const newDispatcherId = "dispatcherId" in body ? pickInt(body.dispatcherId) : undefined;
   const userIdsToResolve = new Set<number>();
   if (newCsrId && newCsrId !== existing.csrId) userIdsToResolve.add(newCsrId);
-  if (newDispatcherId && newDispatcherId !== existing.dispatcherId) userIdsToResolve.add(newDispatcherId);
   const facilityIdToResolve =
     newFacilityId && newFacilityId !== existing.facilityId ? newFacilityId : null;
   const [resolvedUsers, resolvedFacility] = await Promise.all([
@@ -141,14 +137,8 @@ export async function PATCH(
       : null;
     pushDiff(events, who, ORDER_FIELD_LABELS.facility, existing.facility?.name ?? null, newName);
   }
-  if (newDispatcherId !== undefined && newDispatcherId !== existing.dispatcherId) {
-    data.dispatcher = newDispatcherId ? { connect: { id: newDispatcherId } } : { disconnect: true };
-    nextDispatcherId = newDispatcherId;
-    const newName = newDispatcherId
-      ? userNameById.get(newDispatcherId) ?? `User #${newDispatcherId}`
-      : null;
-    pushDiff(events, who, ORDER_FIELD_LABELS.dispatcher, existing.dispatcher?.name ?? null, newName);
-  }
+  // Order-level dispatcher / deliveredAt removed — per-item driverId +
+  // completedAt take over. Both are written through items[] further down.
 
   if ("whatsNeeded" in body) {
     const newVal = asStringArray(body.whatsNeeded);
@@ -203,27 +193,9 @@ export async function PATCH(
       pushDiff(events, who, ORDER_FIELD_LABELS.deductibleAmount, existingNum, newVal);
     }
   }
-  if ("planMemberId" in body) {
-    const newVal = nullableString(body.planMemberId);
-    if (newVal !== existing.planMemberId) {
-      data.planMemberId = newVal;
-      pushDiff(events, who, ORDER_FIELD_LABELS.planMemberId, existing.planMemberId, newVal);
-    }
-  }
-  if ("planName" in body) {
-    const newVal = nullableString(body.planName);
-    if (newVal !== existing.planName) {
-      data.planName = newVal;
-      pushDiff(events, who, ORDER_FIELD_LABELS.planName, existing.planName, newVal);
-    }
-  }
-  if ("planType" in body) {
-    const newVal = (body.planType as PlanType | null) ?? null;
-    if (newVal !== existing.planType) {
-      data.planType = newVal;
-      pushDiff(events, who, ORDER_FIELD_LABELS.planType, existing.planType, newVal);
-    }
-  }
+  // Plan ID / Plan Name / Plan Type / Data Entry / Billing handlers were
+  // removed in Brent 2026-06 commit B. Any value sent for those keys is
+  // silently ignored — schema no longer has the columns.
   if ("handler" in body) {
     const newVal = (body.handler as HandlerType | null) ?? null;
     if (newVal !== existing.handler) {
@@ -298,21 +270,13 @@ export async function PATCH(
       nextStatus = newStatus;
 
       if (newStatus === "DELIVERED") {
-        const requested = pickDate(body.deliveredAt);
-        const resolvedDelivered = requested ?? existing.deliveredAt ?? now;
-        data.deliveredAt = resolvedDelivered;
         data.cancelledAt = null;
-        nextDeliveredAt = resolvedDelivered;
         nextCancelledAt = null;
       } else if (newStatus === "ACTIVE") {
-        data.deliveredAt = null;
         data.cancelledAt = null;
-        nextDeliveredAt = null;
         nextCancelledAt = null;
       } else {
         data.cancelledAt = now;
-        data.deliveredAt = null;
-        nextDeliveredAt = null;
         nextCancelledAt = now;
       }
 
@@ -354,16 +318,9 @@ export async function PATCH(
       pushDiff(events, who, ORDER_FIELD_LABELS.requestedDeliveryDate, existing.requestedDeliveryDate, newVal);
     }
   }
-  // Delivery date can be set retroactively without flipping status. The status
-  // block above already wrote deliveredAt when status changed, so skip then.
-  if ("deliveredAt" in body && data.deliveredAt === undefined) {
-    const newVal = pickDate(body.deliveredAt);
-    if (!eqDate(newVal, existing.deliveredAt)) {
-      data.deliveredAt = newVal;
-      nextDeliveredAt = newVal;
-      pushDiff(events, who, ORDER_FIELD_LABELS.deliveredAt, existing.deliveredAt, newVal);
-    }
-  }
+  // Order-level deliveredAt was retired in Brent 2026-06 commit B. Per-item
+  // completedAt on OrderItem.completedAt replaces it; the body-level value
+  // is silently ignored.
 
   // Order.notes mirrors the latest note so the print ticket keeps working;
   // the canonical history lives in OrderEvent rows. Legacy `notes` key is
@@ -407,22 +364,9 @@ export async function PATCH(
       pushDiff(events, who, ORDER_FIELD_LABELS.dosSubmitted, existing.dosSubmitted, newVal);
     }
   }
-  if ("dataEntryStatus" in body) {
-    const newVal = (body.dataEntryStatus as DataEntryStatus | null) ?? null;
-    if (newVal !== existing.dataEntryStatus) {
-      data.dataEntryStatus = newVal;
-      pushDiff(events, who, ORDER_FIELD_LABELS.dataEntryStatus, existing.dataEntryStatus, newVal);
-    }
-  }
-  if ("billingStatus" in body) {
-    const newVal = (body.billingStatus as BillingStatus | null) ?? null;
-    if (newVal !== existing.billingStatus) {
-      data.billingStatus = newVal;
-      pushDiff(events, who, ORDER_FIELD_LABELS.billingStatus, existing.billingStatus, newVal);
-    }
-  }
+  // Data Entry / Billing handlers were removed in Brent 2026-06 commit B.
 
-  if (body.action === "print" && !existing.printedAt && existing.dispatcherId) {
+  if (body.action === "print" && !existing.printedAt && existing.items.some((it) => it.driverId != null)) {
     if (existing.authStatus !== "NOT_REQ" && existing.authStatus !== "APPROVED") {
       return NextResponse.json(
         { error: "Cannot print ticket until auth is Approved or Not Required." },
@@ -450,27 +394,16 @@ export async function PATCH(
       events.push({ who, action: ORDER_ACTIONS.OUT_FOR_DELIVERY, detail: "" });
     }
   }
-  if (body.action === "door_tag" && existing.outForDeliveryAt && !existing.deliveredAt) {
+  // Door-tag fires before items[] is processed below; the "not yet
+  // delivered" guard switches from the legacy order-level flag to
+  // a per-item check on the EXISTING rows (the new rows come in below).
+  const existingAllCompleted = existing.items.length > 0
+    && existing.items.every((it) => it.completedAt != null);
+  if (body.action === "door_tag" && existing.outForDeliveryAt && !existingAllCompleted) {
     data.doorTaggedAt = now;
     nextDoorTaggedAt = now;
     events.push({ who, action: ORDER_ACTIONS.DOOR_TAG, detail: "" });
   }
-
-  data.stage = deriveStage({
-    current: existing.stage,
-    workOrderType: nextWorkOrderType,
-    status: nextStatus,
-    whatsNeeded: nextWhatsNeeded,
-    primaryInsuranceKey: nextPrimary,
-    authStatus: nextAuth,
-    dispatcherId: nextDispatcherId,
-    printedAt: nextPrintedAt,
-    acknowledgedAt: nextAckAt,
-    outForDeliveryAt: nextOutAt,
-    doorTaggedAt: nextDoorTaggedAt,
-    deliveredAt: nextDeliveredAt,
-    cancelledAt: nextCancelledAt,
-  });
 
   let itemsChanged = false;
   let newItemRows: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: Date | null }> = [];
@@ -497,6 +430,28 @@ export async function PATCH(
       itemsChanged = true;
     }
   }
+
+  // deriveStage needs per-item state — use the new rows when items are being
+  // replaced in this request, otherwise fall back to existing.items.
+  const effectiveItems = itemsChanged ? newItemRows : existing.items.map((it) => ({
+    driverId: it.driverId,
+    completedAt: it.completedAt,
+  }));
+  data.stage = deriveStage({
+    current: existing.stage,
+    workOrderType: nextWorkOrderType,
+    status: nextStatus,
+    whatsNeeded: nextWhatsNeeded,
+    primaryInsuranceKey: nextPrimary,
+    authStatus: nextAuth,
+    anyItemAssigned: effectiveItems.some((it) => it.driverId != null),
+    allItemsCompleted: effectiveItems.length > 0 && effectiveItems.every((it) => it.completedAt != null),
+    printedAt: nextPrintedAt,
+    acknowledgedAt: nextAckAt,
+    outForDeliveryAt: nextOutAt,
+    doorTaggedAt: nextDoorTaggedAt,
+    cancelledAt: nextCancelledAt,
+  });
 
   if (events.length === 0 && Object.keys(data).length === 0 && !itemsChanged) {
     return NextResponse.json({ order: toOrderShape(existing) });

@@ -6,7 +6,7 @@ import { Loader2, ShieldCheck } from "lucide-react";
 const DEMO_ACCOUNTS = [
   { label: "Stee Suite (Admin)", email: "stee@equipdispatch.com",    password: "Admin123!",  role: "supplier"   },
   { label: "Melissa (CSR)",      email: "melissa@equipdispatch.com", password: "Equip2026!", role: "csr"        },
-  { label: "Nic (Dispatcher)",   email: "nic@equipdispatch.com",     password: "Equip2026!", role: "dispatcher" },
+  { label: "Nic (Driver)",       email: "nic@equipdispatch.com",     password: "Equip2026!", role: "driver" },
   { label: "Gabe (CSR + Disp)",  email: "gabe@equipdispatch.com",    password: "Equip2026!", role: "csr"        },
 ];
 

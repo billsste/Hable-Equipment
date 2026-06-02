@@ -53,7 +53,7 @@ const STATUS_COLOR: Record<SerialStatus, { bg: string; color: string }> = {
 };
 
 type Props = {
-  currentUser: { id: number; role: "supplier" | "driver" | "dispatcher" | "csr" };
+  currentUser: { id: number; role: "supplier" | "driver" | "csr" };
   equipment: EquipmentRow[];
   initialSerials: SerialRow[];
 };

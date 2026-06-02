@@ -46,7 +46,7 @@ const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
 
 // `dispatcher` is legacy (renamed to `driver` per Brent 2026-06); both are
 // accepted until the backfill + commit B retire the old role.
-const ALLOWED_CREATE_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver", "dispatcher"];
+const ALLOWED_CREATE_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver"];
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
@@ -204,20 +204,14 @@ export async function POST(request: Request) {
     whatsNeeded,
     primaryInsuranceKey,
     authStatus,
-    // Per-item drivers — order is "ready to assign" once at least one item
-    // has a driver. deriveStage's `dispatcherId` parameter keeps that
-    // semantic during the transition window.
-    dispatcherId: initialItems.find((it) => it.driverId != null)?.driverId ?? null,
+    // Per-item drivers/completion per Brent 2026-06.
+    anyItemAssigned: initialItems.some((it) => it.driverId != null),
+    allItemsCompleted: initialItems.length > 0
+      && initialItems.every((it) => it.completedAt != null),
     printedAt: null,
     acknowledgedAt: null,
     outForDeliveryAt: null,
     doorTaggedAt: null,
-    // Order-level deliveredAt is derived from items: order is "delivered"
-    // when every item has a completion date.
-    deliveredAt: initialItems.length > 0 && initialItems.every((it) => it.completedAt != null)
-      ? initialItems.reduce<Date | null>((max, it) =>
-          it.completedAt && (!max || it.completedAt > max) ? it.completedAt : max, null)
-      : null,
     cancelledAt,
   });
 

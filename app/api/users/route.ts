@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getSessionUser, validatePassword } from "@/lib/auth";
 import { equipStore, UserRole } from "@/lib/equip-store";
 
-const VALID_ROLES: UserRole[] = ["supplier", "dispatcher", "csr"];
+const VALID_ROLES: UserRole[] = ["supplier", "driver", "csr"];
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);

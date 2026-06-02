@@ -8,7 +8,7 @@ type Me = {
   id: number;
   name: string;
   email: string;
-  role: "supplier" | "driver" | "dispatcher" | "csr";
+  role: "supplier" | "driver" | "csr";
   mfaEnabled: boolean;
   mfaEnrolledAt: string | null;
   backupCodesRemaining: number;
@@ -104,7 +104,6 @@ export default function AccountClient({ me: initialMe }: { me: Me }) {
         <Row label="Role" value={
           me.role === "supplier" ? "Administrator"
           : me.role === "driver" ? "Driver"
-          : me.role === "dispatcher" ? "Driver"  // legacy label fallback; backfill renames the rows
           : "Customer Service"
         } />
       </Card>

@@ -114,7 +114,6 @@ export const ORDER_INCLUDE = {
       contact: true,
     },
   },
-  dispatcher: { select: { id: true, name: true } },
   linkedOrder: { select: { id: true, orderNumber: true } },
   items: {
     include: {
@@ -162,14 +161,9 @@ export function toOrderShape(o: OrderWithIncludes): OrderShape {
     deductibleStatus: o.deductibleStatus,
     coinsurancePct: o.coinsurancePct ?? null,
     deductibleAmount: o.deductibleAmount != null ? Number(o.deductibleAmount) : null,
-    planMemberId: o.planMemberId ?? null,
-    planName: o.planName ?? null,
-    planType: o.planType ?? null,
     authStatus: o.authStatus,
     authSubmittedAt: o.authSubmittedAt?.toISOString() ?? null,
     dosSubmitted: o.dosSubmitted?.toISOString() ?? null,
-    dataEntryStatus: o.dataEntryStatus ?? null,
-    billingStatus: o.billingStatus ?? null,
     fulfillmentCompanies: o.fulfillmentCompanies ?? [],
     status: o.status,
     handler: o.handler,
@@ -179,13 +173,10 @@ export function toOrderShape(o: OrderWithIncludes): OrderShape {
     callReceivedDate: o.callReceivedDate?.toISOString() ?? null,
     dischargeDate: o.dischargeDate?.toISOString() ?? null,
     requestedDeliveryDate: o.requestedDeliveryDate?.toISOString() ?? null,
-    dispatcherId: o.dispatcherId ?? null,
-    dispatcherName: o.dispatcher?.name ?? null,
     printedAt: o.printedAt?.toISOString() ?? null,
     acknowledgedAt: o.acknowledgedAt?.toISOString() ?? null,
     outForDeliveryAt: o.outForDeliveryAt?.toISOString() ?? null,
     doorTaggedAt: o.doorTaggedAt?.toISOString() ?? null,
-    deliveredAt: o.deliveredAt?.toISOString() ?? null,
     cancelledAt: o.cancelledAt?.toISOString() ?? null,
     cancellationReason: o.cancellationReason,
     notes: o.notes,
@@ -227,7 +218,16 @@ function buildHistory(o: OrderWithIncludes): OrderShape["history"] {
   add(`printed-${o.id}`, o.printedAt, "Ticket printed");
   add(`ack-${o.id}`, o.acknowledgedAt, "Dispatcher acknowledged");
   add(`out-${o.id}`, o.outForDeliveryAt, "Out for delivery");
-  add(`delivered-${o.id}`, o.deliveredAt, "Delivered");
+  // Per-item completion: synth a "Delivered" entry on the latest item
+  // completedAt when every item is done (drops the order-level deliveredAt).
+  const itemCompletions = (o.items ?? [])
+    .map((it) => it.completedAt)
+    .filter((d): d is Date => !!d);
+  const allDone = (o.items ?? []).length > 0 && itemCompletions.length === (o.items ?? []).length;
+  if (allDone) {
+    const latest = itemCompletions.reduce((a, b) => (a > b ? a : b));
+    add(`delivered-${o.id}`, latest, "Delivered");
+  }
   add(`cancelled-${o.id}`, o.cancelledAt, "Cancelled", o.cancellationReason ?? "");
   return [...real, ...synth].sort(
     (a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime(),

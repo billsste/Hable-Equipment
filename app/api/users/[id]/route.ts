@@ -4,7 +4,7 @@ import { equipStore, type UserRole } from "@/lib/equip-store";
 import { getSessionUser, validatePassword, LIMITS, clip } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 
-const VALID_ROLES: UserRole[] = ["supplier", "dispatcher", "csr"];
+const VALID_ROLES: UserRole[] = ["supplier", "driver", "csr"];
 
 export async function PATCH(
   request: Request,

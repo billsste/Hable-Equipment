@@ -1,4 +1,4 @@
-import type { OrderStage, AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, DataEntryStatus, BillingStatus, WorkOrderType, PlanType, VerificationStatus } from "@prisma/client";
+import type { OrderStage, AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, WorkOrderType, VerificationStatus } from "@prisma/client";
 
 export type { VerificationStatus };
 
@@ -28,14 +28,9 @@ export type OrderShape = {
   deductibleStatus: DeductibleStatus | null;
   coinsurancePct: number | null;
   deductibleAmount: number | null;
-  planMemberId: string | null;
-  planName: string | null;
-  planType: PlanType | null;
   authStatus: AuthStatus;
   authSubmittedAt: string | null;
   dosSubmitted: string | null;
-  dataEntryStatus: DataEntryStatus | null;
-  billingStatus: BillingStatus | null;
   fulfillmentCompanies: string[];
   status: OutcomeStatus;
   handler: HandlerType | null;
@@ -46,13 +41,10 @@ export type OrderShape = {
   callReceivedDate: string | null;
   dischargeDate: string | null;
   requestedDeliveryDate: string | null;
-  dispatcherId: number | null;
-  dispatcherName: string | null;
   printedAt: string | null;
   acknowledgedAt: string | null;
   outForDeliveryAt: string | null;
   doorTaggedAt: string | null;
-  deliveredAt: string | null;
   cancelledAt: string | null;
   cancellationReason: string | null;
   notes: string;
@@ -96,21 +88,23 @@ export function deriveStage(input: {
   whatsNeeded: string[];
   primaryInsuranceKey: string | null;
   authStatus: AuthStatus;
-  dispatcherId: number | null;
+  // Brent 2026-06: replaced the order-level dispatcherId + deliveredAt with
+  // derived booleans from per-item driver assignments and completions.
+  anyItemAssigned: boolean;       // ≥1 OrderItem has a driverId
+  allItemsCompleted: boolean;     // every OrderItem has a non-null completedAt
   printedAt: Date | null;
   acknowledgedAt: Date | null;
   outForDeliveryAt: Date | null;
   doorTaggedAt: Date | null;
-  deliveredAt: Date | null;
   cancelledAt: Date | null;
 }): OrderStage {
   if (isTerminalStatus(input.status) && input.status !== "DELIVERED") return "CANCELLED";
-  if (input.status === "DELIVERED" || input.deliveredAt) return "DELIVERED";
+  if (input.status === "DELIVERED" || input.allItemsCompleted) return "DELIVERED";
   if (input.cancelledAt) return "CANCELLED";
   if (input.outForDeliveryAt) return "OUT_FOR_DELIVERY";
   if (input.doorTaggedAt) return "DOOR_TAG";
   if (input.acknowledgedAt) return "ACKNOWLEDGED";
-  if (input.printedAt && input.dispatcherId) return "ASSIGNED";
+  if (input.printedAt && input.anyItemAssigned) return "ASSIGNED";
 
   // Verification only applies to DELIVERY orders. Service-call type orders
   // skip the insurance/auth gate and go straight to READY_TO_ASSIGN.
@@ -305,18 +299,12 @@ export const ORDER_FIELD_LABELS = {
   deductibleStatus: "Deductible status",
   coinsurancePct: "Coinsurance %",
   deductibleAmount: "Deductible amount",
-  planMemberId: "Plan ID",
-  planName: "Plan name",
-  planType: "Plan type",
   handler: "Handler",
   cancellationReason: "Cancellation reason",
   callReceivedDate: "Call received date",
   dischargeDate: "Discharge date",
   requestedDeliveryDate: "Requested delivery date",
-  deliveredAt: "Delivery date",
   dosSubmitted: "DOS submitted",
-  dataEntryStatus: "Data entry status",
-  billingStatus: "Billing status",
   workOrderType: "Work order type",
 } as const;
 
@@ -334,29 +322,10 @@ export const AUTH_COLORS: Record<AuthStatus, { bg: string; color: string }> = {
   DENIED:            { bg: "rgba(229,72,77,0.16)",   color: "#b03238" },
 };
 
-export const PLAN_TYPE_LABELS: Record<PlanType, string> = {
-  HMO: "HMO",
-  HMO_POS: "HMO / POS",
-  PPO: "PPO",
-};
-
-export const DATA_ENTRY_LABELS: Record<DataEntryStatus, string> = {
-  NOT_STARTED: "Not Started",
-  PT: "PT",
-  CLINICAL: "Clinical",
-  INS: "INS",
-  DT: "DT",
-  SERIAL: "Serial #",
-  ENTRY_COMPLETE: "Entry Complete",
-  ENTERED_FOR_WRITE_OFF: "Entered for Write Off",
-};
-
-export const BILLING_LABELS: Record<BillingStatus, string> = {
-  PENDING: "Pending",
-  CLAIM_DROPPED: "Claim Dropped",
-  DEDUCT_HOLD: "Deduct Hold",
-  WROTE_OFF: "Wrote Off",
-};
+// Brent 2026-06 commit B: PLAN_TYPE_LABELS / DATA_ENTRY_LABELS /
+// BILLING_LABELS removed alongside their Order columns. ELDERCARE and
+// SERVICE_PICKUP WorkOrderType values removed (folded into eldercare flag
+// + PICK_UP respectively).
 
 export const WORK_ORDER_TYPE_LABELS: Record<WorkOrderType, string> = {
   DELIVERY: "Delivery",
@@ -365,8 +334,6 @@ export const WORK_ORDER_TYPE_LABELS: Record<WorkOrderType, string> = {
   EQUIPMENT_MOVE: "Equipment Move",
   EXCHANGE: "Exchange",
   FACILITY_DELIVERY: "Facility Delivery",
-  ELDERCARE: "Eldercare",
-  SERVICE_PICKUP: "Service / Pick Up",
 };
 
 export const WORK_ORDER_TYPE_COLORS: Record<WorkOrderType, { bg: string; color: string }> = {
@@ -376,8 +343,6 @@ export const WORK_ORDER_TYPE_COLORS: Record<WorkOrderType, { bg: string; color: 
   EQUIPMENT_MOVE:    { bg: "rgba(21,190,83,0.14)",   color: "#108c3d" },
   EXCHANGE:          { bg: "rgba(245,158,11,0.16)",  color: "#9b6829" },
   FACILITY_DELIVERY: { bg: "rgba(139,92,246,0.16)",  color: "#6d3fbf" },
-  ELDERCARE:         { bg: "rgba(229,72,77,0.12)",   color: "#b03238" },
-  SERVICE_PICKUP:    { bg: "rgba(100,116,141,0.14)", color: "#64748d" },
 };
 
 // Types whose verification step doesn't apply (no patient insurance/auth flow).

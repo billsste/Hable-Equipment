@@ -526,9 +526,10 @@ export default function OrderForm(props: Props) {
                     // Brent 2026-06: ELDERCARE + SERVICE_PICKUP no longer
                     // selectable. ELDERCARE is replaced by the boolean
                     // eldercare flag below; SERVICE_PICKUP folds into PICK_UP.
-                    options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[])
-                      .filter((k) => k !== "ELDERCARE" && k !== "SERVICE_PICKUP")
-                      .map((k) => ({ value: k, label: WORK_ORDER_TYPE_LABELS[k] }))}
+                    options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
+                      value: k,
+                      label: WORK_ORDER_TYPE_LABELS[k],
+                    }))}
                   />
                   <SegmentedSelect
                     label="Eldercare"

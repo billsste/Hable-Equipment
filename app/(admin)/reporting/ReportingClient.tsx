@@ -22,7 +22,27 @@ import {
   Legend,
   Line,
 } from "recharts";
-import { PLAN_TYPE_LABELS, STAGE_LABELS, STATUS_LABELS, type OrderShape } from "@/lib/order-types";
+import { STAGE_LABELS, STATUS_LABELS, type OrderShape } from "@/lib/order-types";
+
+// Brent 2026-06 commit B: dispatcherName / deliveredAt / planType were dropped
+// from OrderShape. These derived helpers replace the legacy field reads:
+// - driverDisplay: single shared name across items, or "Multiple" if mixed
+// - effectiveDeliveredAt: max completedAt only when every item is completed
+function driverDisplay(o: OrderShape): string | null {
+  const names = Array.from(new Set(o.items.map((it) => it.driverName).filter((n): n is string => !!n)));
+  if (names.length === 0) return null;
+  if (names.length === 1) return names[0];
+  return "Multiple";
+}
+function effectiveDeliveredAt(o: OrderShape): string | null {
+  if (o.items.length === 0) return null;
+  let max: string | null = null;
+  for (const it of o.items) {
+    if (!it.completedAt) return null; // partial completion — order not done
+    if (!max || it.completedAt > max) max = it.completedAt;
+  }
+  return max;
+}
 import { downloadCsv } from "@/lib/utils";
 
 type Props = {
@@ -81,7 +101,10 @@ function emptyFilters(): Filters {
 
 function passesFilters(o: OrderShape, f: Filters): boolean {
   if (f.facilities.size && (!o.facilityName || !f.facilities.has(o.facilityName))) return false;
-  if (f.dispatchers.size && (!o.dispatcherName || !f.dispatchers.has(o.dispatcherName))) return false;
+  if (f.dispatchers.size) {
+    const dn = driverDisplay(o);
+    if (!dn || !f.dispatchers.has(dn)) return false;
+  }
   if (f.companies.size && !o.fulfillmentCompanies.some((c) => f.companies.has(c))) return false;
   if (f.insurance.size && (!o.primaryInsuranceKey || !f.insurance.has(o.primaryInsuranceKey))) return false;
   if (f.stages.size && !f.stages.has(o.stage)) return false;
@@ -251,12 +274,12 @@ function formatDelta(curr: number, prior: number): { text: string; dir: "up" | "
   return { text: `${sign}${(pct * 100).toFixed(1)}%`, dir };
 }
 
-type Dimension = "facility" | "dispatcher" | "company" | "insurance" | "category" | "item" | "stage" | "status" | "coinsurance" | "deductible" | "plan" | "dow" | "time";
+type Dimension = "facility" | "driver" | "company" | "insurance" | "category" | "item" | "stage" | "status" | "coinsurance" | "deductible" | "dow" | "time";
 type Metric = "orders" | "units" | "delivered" | "cancelled" | "avgHours" | "cancelRate";
 
 const DIMENSION_OPTIONS: Array<{ value: Dimension; label: string }> = [
   { value: "facility", label: "Facility" },
-  { value: "dispatcher", label: "Dispatcher" },
+  { value: "driver", label: "Driver" },
   { value: "company", label: "Fulfillment company" },
   { value: "insurance", label: "Insurance" },
   { value: "category", label: "Equipment category" },
@@ -265,7 +288,6 @@ const DIMENSION_OPTIONS: Array<{ value: Dimension; label: string }> = [
   { value: "status", label: "Status" },
   { value: "coinsurance", label: "Coinsurance %" },
   { value: "deductible", label: "Deductible amount" },
-  { value: "plan", label: "Plan type" },
   { value: "dow", label: "Day of week" },
   { value: "time", label: "Time bucket" },
 ];
@@ -283,15 +305,15 @@ const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const PRESETS: Array<{ label: string; rowDim: Dimension; colDim: Dimension | "none"; metric: Metric }> = [
   { label: "Equipment by facility", rowDim: "facility", colDim: "category", metric: "units" },
-  { label: "Dispatcher workload", rowDim: "dispatcher", colDim: "time", metric: "orders" },
+  { label: "Driver workload", rowDim: "driver", colDim: "time", metric: "orders" },
   { label: "Company performance", rowDim: "company", colDim: "time", metric: "orders" },
   { label: "Stage by month", rowDim: "stage", colDim: "time", metric: "orders" },
 ];
 
 const VALID_GRAN = ["day", "week", "month", "quarter"] as const satisfies readonly Granularity[];
 const VALID_DIM = [
-  "facility", "dispatcher", "company", "insurance",
-  "category", "item", "stage", "status", "coinsurance", "deductible", "plan", "dow", "time",
+  "facility", "driver", "company", "insurance",
+  "category", "item", "stage", "status", "coinsurance", "deductible", "dow", "time",
 ] as const satisfies readonly Dimension[];
 const VALID_METRIC = [
   "orders", "units", "delivered", "cancelled", "avgHours", "cancelRate",
@@ -446,7 +468,8 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
     const dispatchersSet = new Set<string>();
     for (const o of orders) {
       if (o.facilityName) facilitiesSet.add(o.facilityName);
-      if (o.dispatcherName) dispatchersSet.add(o.dispatcherName);
+      const dn = driverDisplay(o);
+      if (dn) dispatchersSet.add(dn);
     }
     return {
       facilities: Array.from(facilitiesSet).sort().map((v) => ({ value: v, label: v })),
@@ -696,8 +719,9 @@ function computeKpis(orders: OrderShape[]): Kpis {
     else if (o.stage === "CANCELLED") cancelled++;
     else inFlight++;
     for (const it of o.items) units += it.quantity;
-    if (o.deliveredAt) {
-      const ms = new Date(o.deliveredAt).getTime() - new Date(o.createdAt).getTime();
+    const ed = effectiveDeliveredAt(o);
+    if (ed) {
+      const ms = new Date(ed).getTime() - new Date(o.createdAt).getTime();
       if (ms > 0) {
         totalHrs += ms / 36e5;
         withDates++;
@@ -761,14 +785,15 @@ function computeFunnel(orders: OrderShape[]): { stages: FunnelStage[]; cancelled
         ofdHrs.push((new Date(o.outForDeliveryAt).getTime() - new Date(o.acknowledgedAt).getTime()) / 36e5);
       }
     }
-    if (o.deliveredAt) {
+    const ed = effectiveDeliveredAt(o);
+    if (ed) {
       delivered++;
       if (o.outForDeliveryAt) {
-        delHrs.push((new Date(o.deliveredAt).getTime() - new Date(o.outForDeliveryAt).getTime()) / 36e5);
+        delHrs.push((new Date(ed).getTime() - new Date(o.outForDeliveryAt).getTime()) / 36e5);
       }
     }
     if (isCancelled) {
-      const lastStage = o.deliveredAt
+      const lastStage = ed
         ? "delivered"
         : o.outForDeliveryAt
           ? "ofd"
@@ -831,8 +856,8 @@ function rowContributions(o: OrderShape, dim: Dimension, args: BreakdownArgs): C
   switch (dim) {
     case "facility":
       return [{ rowKey: o.facilityName ?? "Unassigned", rowLabel: o.facilityName ?? "Unassigned", weight: 1 }];
-    case "dispatcher":
-      return [{ rowKey: o.dispatcherName ?? "Unassigned", rowLabel: o.dispatcherName ?? "Unassigned", weight: 1 }];
+    case "driver":
+      return [{ rowKey: driverDisplay(o) ?? "Unassigned", rowLabel: driverDisplay(o) ?? "Unassigned", weight: 1 }];
     case "company":
       if (o.fulfillmentCompanies.length === 0) {
         return [{ rowKey: "Unassigned", rowLabel: "Unassigned", weight: 1 }];
@@ -880,10 +905,6 @@ function rowContributions(o: OrderShape, dim: Dimension, args: BreakdownArgs): C
       const b = deductibleBucket(o.deductibleAmount);
       return [{ rowKey: b.key, rowLabel: b.label, weight: 1 }];
     }
-    case "plan": {
-      const t = o.planType;
-      return [{ rowKey: t ?? "unset", rowLabel: t ? PLAN_TYPE_LABELS[t] : "Not recorded", weight: 1 }];
-    }
     case "dow": {
       const d = new Date(o.createdAt).getDay();
       return [{ rowKey: String(d), rowLabel: DOW_LABELS[d], weight: 1 }];
@@ -910,8 +931,9 @@ function computeBreakdown(orders: OrderShape[], args: BreakdownArgs): BreakdownD
     if (rowContribs.length === 0 || colContribs.length === 0) continue;
     let hrs = 0;
     let hasHrs = false;
-    if (o.deliveredAt) {
-      const ms = new Date(o.deliveredAt).getTime() - new Date(o.createdAt).getTime();
+    const ed = effectiveDeliveredAt(o);
+    if (ed) {
+      const ms = new Date(ed).getTime() - new Date(o.createdAt).getTime();
       if (ms > 0) {
         hrs = ms / 36e5;
         hasHrs = true;
@@ -1100,8 +1122,9 @@ function computeTopFacilities(orders: OrderShape[]): FacilityRow[] {
     if (o.stage === "DELIVERED") cur.delivered++;
     if (o.stage === "CANCELLED") cur.cancelled++;
     for (const it of o.items) cur.units += it.quantity;
-    if (o.deliveredAt) {
-      const ms = new Date(o.deliveredAt).getTime() - new Date(o.createdAt).getTime();
+    const ed = effectiveDeliveredAt(o);
+    if (ed) {
+      const ms = new Date(ed).getTime() - new Date(o.createdAt).getTime();
       if (ms > 0) {
         cur.hrs += ms / 36e5;
         cur.hrsCount++;
@@ -1130,7 +1153,7 @@ function addToFilters(
 ) {
   const target: keyof Filters | null =
     dim === "facility"   ? "facilities" :
-    dim === "dispatcher" ? "dispatchers" :
+    dim === "driver"     ? "dispatchers" :
     dim === "company"    ? "companies" :
     dim === "insurance"  ? "insurance" :
     dim === "category"   ? "categories" :
@@ -1550,7 +1573,7 @@ function ExplorerCard({
   );
 }
 
-const DRILL_DIMS: ReadonlyArray<Dimension> = ["facility", "dispatcher", "company", "insurance", "category", "stage", "status"];
+const DRILL_DIMS: ReadonlyArray<Dimension> = ["facility", "driver", "company", "insurance", "category", "stage", "status"];
 
 function ExplorerTable({
   data,
