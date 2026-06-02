@@ -89,7 +89,9 @@ jobs:
           # eats the rest of the script.
           for f in $(docker compose exec -T app sh -c 'ls -1 ./prisma/backfills/*.sql 2>/dev/null || true' </dev/null); do
             echo "  backfill: $f"
-            docker compose exec -T app npx prisma db execute --schema=./prisma/schema.prisma --file="$f" </dev/null
+            # Prisma 7's `db execute` reads datasource from prisma.config.ts —
+            # no --schema flag accepted. Only --file is valid.
+            docker compose exec -T app npx prisma db execute --file="$f" </dev/null
           done
           echo "Backfills complete."
           REMOTE

@@ -6,6 +6,7 @@ import {
   AUTH_LABELS,
   STAGE_COLORS,
   STAGE_LABELS,
+  VERIFICATION_STATUS_LABELS,
   WORK_ORDER_TYPE_COLORS,
   WORK_ORDER_TYPE_LABELS,
   authAgingDays,
@@ -58,7 +59,7 @@ type Props = {
 };
 
 type ViewKey = "all" | "open" | "ready" | "out" | "auth" | "delivered";
-type SortKey = "orderNumber" | "patient" | "facility" | "stage" | "csr" | "dispatcher" | "discharge" | "orderDate";
+type SortKey = "orderNumber" | "patient" | "facility" | "stage" | "csr" | "driver" | "discharge" | "orderDate";
 type SortDir = "asc" | "desc";
 
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
@@ -122,6 +123,8 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const [deductibleFilter, setDeductibleFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  // Brent 2026-06: Verification Status filter. Empty string = no filter.
+  const [verificationFilter, setVerificationFilter] = useState("");
   const [editing, setEditing] = useState<OrderShape | null>(null);
   const [creating, setCreating] = useState(initialNew);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "discharge", dir: "asc" });
@@ -149,14 +152,14 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       sortOrders(
         filterOrders(
           orders, view, search,
-          { insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, dateRange },
+          { insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, verificationFilter, dateRange },
         ),
         sort,
       ),
-    [orders, view, search, insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, dateRange, sort],
+    [orders, view, search, insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, verificationFilter, dateRange, sort],
   );
   const hasFieldFilter =
-    insuranceFilter !== "" || authFilter !== "" || deductibleFilter !== "" || companyFilter !== "" || typeFilter !== "" || datePreset !== "all";
+    insuranceFilter !== "" || authFilter !== "" || deductibleFilter !== "" || companyFilter !== "" || typeFilter !== "" || verificationFilter !== "" || datePreset !== "all";
   const counts = useMemo(() => {
     const m: Record<ViewKey, number> = {
       all: orders.length,
@@ -221,6 +224,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             if (deductibleFilter) chips.push(`Deductible ${deductibleFilter}`);
             if (companyFilter) chips.push(`Company ${companyFilter}`);
             if (typeFilter) chips.push(`Type ${typeFilter}`);
+            if (verificationFilter) chips.push(`Verification ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
             if (search.trim()) chips.push(`Search “${search.trim()}”`);
             chips.push(`Printed ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`);
             return (
@@ -368,9 +372,18 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           value={typeFilter}
           onChange={setTypeFilter}
           placeholder="All types"
-          options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
+          options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[])
+            // Drop deprecated types from the filter picker too.
+            .filter((k) => k !== "ELDERCARE" && k !== "SERVICE_PICKUP")
+            .map((k) => ({ value: k, label: WORK_ORDER_TYPE_LABELS[k] }))}
+        />
+        <FilterSelect
+          value={verificationFilter}
+          onChange={setVerificationFilter}
+          placeholder="All verification"
+          options={(Object.keys(VERIFICATION_STATUS_LABELS) as Array<keyof typeof VERIFICATION_STATUS_LABELS>).map((k) => ({
             value: k,
-            label: WORK_ORDER_TYPE_LABELS[k],
+            label: VERIFICATION_STATUS_LABELS[k],
           }))}
         />
         <FilterSelect
@@ -414,6 +427,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               setDeductibleFilter("");
               setCompanyFilter("");
               setTypeFilter("");
+              setVerificationFilter("");
               setDatePreset("all");
               setDateFrom("");
               setDateTo("");
@@ -479,7 +493,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
                 <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Discharge Date</Th>
                 <Th sortKey="stage" sort={sort} onSort={toggleSort}>Stage</Th>
                 <Th sortKey="csr" sort={sort} onSort={toggleSort}>CSR</Th>
-                <Th sortKey="dispatcher" sort={sort} onSort={toggleSort}>Dispatcher</Th>
+                <Th sortKey="driver" sort={sort} onSort={toggleSort}>Driver</Th>
               </tr>
             </thead>
             <tbody>
@@ -636,22 +650,7 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
         )}
       </Td>
       <Td>
-        {order.dispatcherName ? (
-          <span
-            style={{
-              color: "#273951",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              display: "block",
-            }}
-            title={order.dispatcherName}
-          >
-            {order.dispatcherName}
-          </span>
-        ) : (
-          <Muted>Unassigned</Muted>
-        )}
+        <DriversCell order={order} />
       </Td>
     </tr>
   );
@@ -708,9 +707,12 @@ function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean
           Ordered {formatOrderDate(order.createdAt)}
         </span>
         <span style={{ color: "#94a3b8" }}>·</span>
-        <span style={{ color: order.dispatcherName ? "#273951" : "#94a3b8" }}>
-          {order.dispatcherName ?? "Unassigned"}
-        </span>
+        {(() => {
+          const s = driverSummary(order);
+          if (s.kind === "single") return <span style={{ color: "#273951" }}>{s.name}</span>;
+          if (s.kind === "multiple") return <span style={{ color: "#4434d4", fontWeight: 500 }}>Multiple drivers ({s.names.length})</span>;
+          return <span style={{ color: "#94a3b8" }}>Unassigned</span>;
+        })()}
         {order.dischargeDate && (
           <>
             <span style={{ color: "#94a3b8" }}>·</span>
@@ -735,7 +737,7 @@ function filterOrders(
   search: string,
   fields: {
     insuranceFilter: string; authFilter: string; deductibleFilter: string;
-    companyFilter: string; typeFilter: string;
+    companyFilter: string; typeFilter: string; verificationFilter: string;
     dateRange: { from: string; to: string } | null;
   },
 ) {
@@ -767,6 +769,9 @@ function filterOrders(
   if (fields.typeFilter) {
     list = list.filter((o) => o.workOrderType === fields.typeFilter);
   }
+  if (fields.verificationFilter) {
+    list = list.filter((o) => o.verificationStatus === fields.verificationFilter);
+  }
   if (fields.dateRange) {
     // Compare the YYYY-MM-DD slice in UTC so the inclusive boundary matches
     // what the user typed in the date inputs (no TZ drift on either end).
@@ -785,7 +790,8 @@ function filterOrders(
         o.patientDisplay.toLowerCase().includes(q) ||
         (o.facilityName ?? "").toLowerCase().includes(q) ||
         (o.csrName ?? "").toLowerCase().includes(q) ||
-        (o.dispatcherName ?? "").toLowerCase().includes(q),
+        // Per-item driver search — match any item's driver name.
+        o.items.some((it) => (it.driverName ?? "").toLowerCase().includes(q)),
     );
   }
 
@@ -802,7 +808,15 @@ function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): O
       case "facility": return (o.facilityName ?? "").toLowerCase();
       case "stage": return o.stage;
       case "csr": return (o.csrName ?? "").toLowerCase();
-      case "dispatcher": return (o.dispatcherName ?? "").toLowerCase();
+      case "driver": {
+        // Per-item drivers. Single shared name sorts naturally; mixed orders
+        // sort under "~~multiple" so they group at the bottom; unassigned
+        // sorts last via "~~unassigned" (tildes come after letters).
+        const summary = driverSummary(o);
+        if (summary.kind === "single") return summary.name.toLowerCase();
+        if (summary.kind === "multiple") return "~~multiple";
+        return "~~unassigned";
+      }
       case "discharge": return o.dischargeDate ? new Date(o.dischargeDate).getTime() : Number.MAX_SAFE_INTEGER;
     }
   };
@@ -819,6 +833,70 @@ function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): O
 // sees matches what's in CSV/print (consistent with formatDc).
 function formatOrderDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+// Drivers are per-item per Brent's 2026-06 spec. The Tracker column collapses
+// the per-item assignments into one of three display states:
+//   - none       → order has no driver-assigned items
+//   - single     → every assigned item shares the same driver (or only one)
+//   - multiple   → ≥2 distinct drivers across items
+// `none` falls through to "Unassigned"; `multiple` shows a chip with a
+// tooltip listing every driver.
+type DriverSummary =
+  | { kind: "none" }
+  | { kind: "single"; name: string }
+  | { kind: "multiple"; names: string[] };
+
+function driverSummary(order: OrderShape): DriverSummary {
+  const names = Array.from(
+    new Set(
+      order.items
+        .map((it) => it.driverName)
+        .filter((n): n is string => typeof n === "string" && n.length > 0),
+    ),
+  );
+  if (names.length === 0) return { kind: "none" };
+  if (names.length === 1) return { kind: "single", name: names[0] };
+  return { kind: "multiple", names };
+}
+
+function DriversCell({ order }: { order: OrderShape }) {
+  const s = driverSummary(order);
+  if (s.kind === "none") return <Muted>Unassigned</Muted>;
+  if (s.kind === "single") {
+    return (
+      <span
+        title={s.name}
+        style={{
+          color: "#273951",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          display: "block",
+        }}
+      >
+        {s.name}
+      </span>
+    );
+  }
+  return (
+    <span
+      title={`Drivers: ${s.names.join(", ")}`}
+      style={{
+        display: "inline-block",
+        background: "rgba(83,58,253,0.10)",
+        color: "#4434d4",
+        fontSize: 11,
+        fontWeight: 500,
+        padding: "1px 6px",
+        borderRadius: 4,
+        border: "1px solid rgba(83,58,253,0.20)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      Multiple ({s.names.length})
+    </span>
+  );
 }
 
 type DcUrgency = ReturnType<typeof dcUrgency>;
@@ -839,7 +917,7 @@ function exportCsv(rows: OrderShape[]): void {
   // ones — they don't show in the table but are useful in spreadsheet form.
   const header = [
     "Order #", "Patient", "Facility", "Order Date", "Discharge",
-    "Stage", "CSR", "Dispatcher",
+    "Stage", "CSR", "Driver(s)",
     "Authorization Status", "Primary Insurance", "Companies", "Items",
   ];
   const data = rows.map((o) => [
@@ -850,7 +928,8 @@ function exportCsv(rows: OrderShape[]): void {
     o.dischargeDate ? new Date(o.dischargeDate).toLocaleDateString("en-US", { timeZone: "UTC" }) : "",
     STAGE_LABELS[o.stage],
     o.csrName ?? "",
-    o.dispatcherName ?? "",
+    // Per-item driver names, deduped — joined as "; " so Excel sees one cell.
+    Array.from(new Set(o.items.map((it) => it.driverName).filter((n): n is string => !!n))).join("; "),
     AUTH_LABELS[o.authStatus],
     o.primaryInsuranceKey ?? "",
     o.fulfillmentCompanies.join("; "),
