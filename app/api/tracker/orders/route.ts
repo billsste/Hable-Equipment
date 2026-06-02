@@ -28,17 +28,18 @@ import {
 } from "@/lib/order-types";
 import type {
   AuthStatus,
-  BillingStatus,
-  DataEntryStatus,
   DeductibleStatus,
   HandlerType,
   OutcomeStatus,
-  PlanType,
+  VerificationStatus,
   WorkOrderType,
 } from "@prisma/client";
 
 const VALID_WORK_ORDER_TYPES = Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[];
 const VALID_AUTH_STATUSES = Object.keys(AUTH_LABELS) as AuthStatus[];
+const VALID_VERIFICATION_STATUSES: ReadonlyArray<VerificationStatus> = [
+  "READY_FOR_DELIVERY", "ON_HOLD", "TRANSFERRED",
+];
 const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE", "ON_HOLD", "LOOSE_ENDS", "TRANSFERRED", "REJECTED", "CANCELLED", "DELIVERED", "WRITE_OFF",
 ];
@@ -111,11 +112,20 @@ export async function POST(request: Request) {
 
   const orderNumber = await generateOrderNumber();
   const initialItems = Array.isArray(body.items)
-    ? (body.items as Array<{ equipmentId?: unknown; quantity?: unknown }>)
+    ? (body.items as Array<{
+        equipmentId?: unknown;
+        quantity?: unknown;
+        driverId?: unknown;
+        completedAt?: unknown;
+      }>)
         .filter((it) => typeof it.equipmentId === "string" && (it.equipmentId as string).length > 0)
         .map((it) => ({
           equipmentId: it.equipmentId as string,
           quantity: typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : 1,
+          driverId: typeof it.driverId === "number" ? it.driverId : null,
+          completedAt: typeof it.completedAt === "string" && it.completedAt
+            ? new Date(it.completedAt + "T00:00:00.000Z")
+            : null,
         }))
     : [];
 
@@ -138,18 +148,24 @@ export async function POST(request: Request) {
   const coinsurancePct =
     coinsuranceRaw == null ? null : Math.min(100, Math.max(0, Math.round(coinsuranceRaw)));
   const deductibleAmount = pickDecimal(body.deductibleAmount);
-  const planMemberId = nullableString(body.planMemberId);
-  const planName = nullableString(body.planName);
-  const planType = (body.planType as PlanType | null) ?? null;
+  // Brent 2026-06: planMemberId / planName / planType / dataEntryStatus /
+  // billingStatus are no longer captured. Existing DB values are left intact
+  // (commit B drops the columns). dispatcherId / deliveredAt similarly no
+  // longer flow through here — see the per-item driverId / completedAt
+  // fields on `initialItems` above.
   const dosSubmitted = pickDate(body.dosSubmitted);
-  const dataEntryStatus = (body.dataEntryStatus as DataEntryStatus | null) ?? null;
-  const billingStatus = (body.billingStatus as BillingStatus | null) ?? null;
   const authStatus: AuthStatus = VALID_AUTH_STATUSES.includes(body.authStatus as AuthStatus)
     ? (body.authStatus as AuthStatus)
     : "NOT_REQ";
+  const pendingDocuments = authStatus === "PENDING_DOCUMENTS"
+    ? asStringArray(body.pendingDocuments).slice(0, 10)
+    : [];
+  const verificationStatus = VALID_VERIFICATION_STATUSES.includes(body.verificationStatus as VerificationStatus)
+    ? (body.verificationStatus as VerificationStatus)
+    : null;
+  const eldercare = body.eldercare === true;
   const fulfillmentCompanies = asStringArray(body.fulfillmentCompanies).slice(0, 20);
   const handler = (body.handler as HandlerType | null) ?? null;
-  const dispatcherId = pickInt(body.dispatcherId);
 
   // Outcome status governs whether the order is parked (cancelledAt) or
   // delivered. Mirror the PATCH route's resolution so create + edit agree.
@@ -158,7 +174,6 @@ export async function POST(request: Request) {
     : "ACTIVE";
   let cancellationReason: string | null = null;
   let cancelledAt: Date | null = null;
-  let deliveredAt: Date | null = pickDate(body.deliveredAt);
   if (status !== "ACTIVE") {
     if (requiresReason(status)) {
       const reason = clip(body.cancellationReason, LIMITS.reason);
@@ -170,11 +185,8 @@ export async function POST(request: Request) {
       }
       cancellationReason = reason;
     }
-    if (status === "DELIVERED") {
-      deliveredAt = deliveredAt ?? now;
-    } else {
+    if (status !== "DELIVERED") {
       cancelledAt = now;
-      deliveredAt = null;
     }
   }
 
@@ -192,25 +204,30 @@ export async function POST(request: Request) {
     whatsNeeded,
     primaryInsuranceKey,
     authStatus,
-    dispatcherId,
+    // Per-item drivers — order is "ready to assign" once at least one item
+    // has a driver. deriveStage's `dispatcherId` parameter keeps that
+    // semantic during the transition window.
+    dispatcherId: initialItems.find((it) => it.driverId != null)?.driverId ?? null,
     printedAt: null,
     acknowledgedAt: null,
     outForDeliveryAt: null,
     doorTaggedAt: null,
-    deliveredAt,
+    // Order-level deliveredAt is derived from items: order is "delivered"
+    // when every item has a completion date.
+    deliveredAt: initialItems.length > 0 && initialItems.every((it) => it.completedAt != null)
+      ? initialItems.reduce<Date | null>((max, it) =>
+          it.completedAt && (!max || it.completedAt > max) ? it.completedAt : max, null)
+      : null,
     cancelledAt,
   });
 
   // Resolve display names in parallel so the audit trail can show "Acme SNF"
   // instead of "Facility #42" without serializing the round-trips.
-  const [csr, facility, dispatcher, equipmentRows] = await Promise.all([
+  const [csr, facility, equipmentRows] = await Promise.all([
     csrId
       ? db.user.findUnique({ where: { id: csrId }, select: { name: true } })
       : Promise.resolve(null),
     db.facility.findUnique({ where: { id: facilityId }, select: { name: true } }),
-    dispatcherId
-      ? db.user.findUnique({ where: { id: dispatcherId }, select: { name: true } })
-      : Promise.resolve(null),
     initialItems.length
       ? db.equipment.findMany({
           where: { id: { in: initialItems.map((it) => it.equipmentId) } },
@@ -241,9 +258,6 @@ export async function POST(request: Request) {
   if (deductibleStatus) pushSet(ORDER_FIELD_LABELS.deductibleStatus, deductibleStatus);
   if (coinsurancePct != null) pushSet(ORDER_FIELD_LABELS.coinsurancePct, String(coinsurancePct));
   if (deductibleAmount != null) pushSet(ORDER_FIELD_LABELS.deductibleAmount, String(deductibleAmount));
-  if (planMemberId) pushSet(ORDER_FIELD_LABELS.planMemberId, planMemberId);
-  if (planName) pushSet(ORDER_FIELD_LABELS.planName, planName);
-  if (planType) pushSet(ORDER_FIELD_LABELS.planType, planType);
   if (authStatus !== "NOT_REQ") {
     initialEvents.push({
       who: user.name,
@@ -252,11 +266,11 @@ export async function POST(request: Request) {
     });
   }
   if (dosSubmitted) pushSet(ORDER_FIELD_LABELS.dosSubmitted, dosSubmitted.toISOString().slice(0, 10));
-  if (dataEntryStatus) pushSet(ORDER_FIELD_LABELS.dataEntryStatus, dataEntryStatus);
-  if (billingStatus) pushSet(ORDER_FIELD_LABELS.billingStatus, billingStatus);
+  if (verificationStatus) pushSet("Verification status", verificationStatus);
+  if (eldercare) pushSet("Eldercare", "yes");
+  if (pendingDocuments.length) pushSet("Pending documents", `[${pendingDocuments.join(", ")}]`);
   if (fulfillmentCompanies.length) pushSet(ORDER_FIELD_LABELS.fulfillmentCompanies, `[${fulfillmentCompanies.join(", ")}]`);
   if (handler) pushSet(ORDER_FIELD_LABELS.handler, handler);
-  if (dispatcherId) pushSet(ORDER_FIELD_LABELS.dispatcher, dispatcher?.name ?? `User #${dispatcherId}`);
   if (status !== "ACTIVE") {
     initialEvents.push({
       who: user.name,
@@ -264,7 +278,6 @@ export async function POST(request: Request) {
       detail: `${STATUS_LABELS.ACTIVE} → ${STATUS_LABELS[status]}${cancellationReason ? ` · Reason: ${cancellationReason}` : ""}`,
     });
   }
-  if (deliveredAt) pushSet(ORDER_FIELD_LABELS.deliveredAt, deliveredAt.toISOString().slice(0, 10));
   if (initialItems.length) {
     initialEvents.push({
       who: user.name,
@@ -284,6 +297,7 @@ export async function POST(request: Request) {
         orderNumber,
         stage,
         workOrderType,
+        eldercare,
         linkedOrderId,
         csrId,
         createdById: user.id,
@@ -300,25 +314,32 @@ export async function POST(request: Request) {
         deductibleStatus,
         coinsurancePct,
         deductibleAmount,
-        planMemberId,
-        planName,
-        planType,
         authStatus,
         authRequiredAt,
         authSubmittedAt,
         authApprovedAt,
         authDeniedAt,
+        pendingDocuments,
+        verificationStatus,
         dosSubmitted,
-        dataEntryStatus,
-        billingStatus,
         fulfillmentCompanies,
         handler,
-        dispatcherId,
         status,
         cancellationReason,
         cancelledAt,
-        deliveredAt,
-        items: initialItems.length ? { createMany: { data: initialItems } } : undefined,
+        // Brent 2026-06: items carry their own driverId + completedAt.
+        items: initialItems.length
+          ? {
+              createMany: {
+                data: initialItems.map((it) => ({
+                  equipmentId: it.equipmentId,
+                  quantity: it.quantity,
+                  driverId: it.driverId,
+                  completedAt: it.completedAt,
+                })),
+              },
+            }
+          : undefined,
         history: { create: initialEvents.map((e) => ({ who: e.who, action: e.action, detail: e.detail })) },
       },
       include: ORDER_INCLUDE,

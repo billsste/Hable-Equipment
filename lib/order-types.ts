@@ -39,6 +39,10 @@ export type OrderShape = {
   fulfillmentCompanies: string[];
   status: OutcomeStatus;
   handler: HandlerType | null;
+  // Brent's 2026-06 spec
+  verificationStatus: VerificationStatus | null;
+  eldercare: boolean;
+  pendingDocuments: string[];
   callReceivedDate: string | null;
   dischargeDate: string | null;
   requestedDeliveryDate: string | null;
@@ -60,6 +64,11 @@ export type OrderShape = {
     abbreviation: string;
     hcpcsCode: string;
     quantity: number;
+    // Per-item driver + completion per Brent's "Steve delivers beds, Brent
+    // delivers chairs" model. Both nullable while in flight.
+    driverId: number | null;
+    driverName: string | null;
+    completedAt: string | null;
   }>;
   history: Array<{
     id: string;

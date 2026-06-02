@@ -121,6 +121,7 @@ export const ORDER_INCLUDE = {
       equipment: {
         select: { id: true, name: true, category: true, abbreviation: true, hcpcsCode: true },
       },
+      driver: { select: { id: true, name: true } },
     },
   },
   history: {
@@ -172,6 +173,9 @@ export function toOrderShape(o: OrderWithIncludes): OrderShape {
     fulfillmentCompanies: o.fulfillmentCompanies ?? [],
     status: o.status,
     handler: o.handler,
+    verificationStatus: o.verificationStatus ?? null,
+    eldercare: o.eldercare ?? false,
+    pendingDocuments: o.pendingDocuments ?? [],
     callReceivedDate: o.callReceivedDate?.toISOString() ?? null,
     dischargeDate: o.dischargeDate?.toISOString() ?? null,
     requestedDeliveryDate: o.requestedDeliveryDate?.toISOString() ?? null,
@@ -193,6 +197,9 @@ export function toOrderShape(o: OrderWithIncludes): OrderShape {
       category: it.equipment.category,
       abbreviation: it.equipment.abbreviation,
       hcpcsCode: it.equipment.hcpcsCode,
+      driverId: it.driverId ?? null,
+      driverName: it.driver?.name ?? null,
+      completedAt: it.completedAt?.toISOString() ?? null,
     })),
     history: buildHistory(o),
     createdAt: o.createdAt.toISOString(),

@@ -3,20 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Loader2, AlertTriangle, Send, CheckCircle2, DoorClosed, Plus, Printer, Truck } from "lucide-react";
 import {
-  BILLING_LABELS,
-  DATA_ENTRY_LABELS,
-  PLAN_TYPE_LABELS,
+  PENDING_DOCUMENT_OPTIONS,
   STAGE_COLORS,
   STAGE_LABELS,
   STATUS_LABELS,
+  VERIFICATION_STATUS_LABELS,
   WORK_ORDER_TYPE_COLORS,
   WORK_ORDER_TYPE_LABELS,
   isBlockingStatus,
   isServiceCallType,
   requiresReason,
   type OrderShape,
+  type VerificationStatus,
 } from "@/lib/order-types";
-import type { BillingStatus, DataEntryStatus, OutcomeStatus, PlanType, WorkOrderType } from "@prisma/client";
+import type { OutcomeStatus, WorkOrderType } from "@prisma/client";
 import type { Lookups } from "./TrackerClient";
 import {
   ActionBtn,
@@ -78,13 +78,16 @@ export default function OrderForm(props: Props) {
   const [deductibleAmount, setDeductibleAmount] = useState(
     initial?.deductibleAmount != null ? String(initial.deductibleAmount) : "",
   );
-  const [planMemberId, setPlanMemberId] = useState(initial?.planMemberId ?? "");
-  const [planName, setPlanName] = useState(initial?.planName ?? "");
-  const [planType, setPlanType] = useState<PlanType | null>(initial?.planType ?? null);
   const [authStatus, setAuthStatus] = useState<OrderShape["authStatus"]>(initial?.authStatus ?? "NOT_REQ");
   const [dosSubmitted, setDosSubmitted] = useState(initial?.dosSubmitted?.slice(0, 10) ?? "");
-  const [dataEntryStatus, setDataEntryStatus] = useState<DataEntryStatus | null>(initial?.dataEntryStatus ?? null);
-  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(initial?.billingStatus ?? null);
+  // Brent 2026-06: Plan ID / Plan Name / Plan Type / Data Entry / Billing
+  // fields are removed from the form. Existing rows still carry data in the
+  // DB but the form no longer reads or writes them. A follow-up commit drops
+  // the columns once nothing references them.
+  // PENDING_DOCUMENTS multi-select — visible only when authStatus === "PENDING_DOCUMENTS".
+  const [pendingDocuments, setPendingDocuments] = useState<string[]>(initial?.pendingDocuments ?? []);
+  // Verification-step manual outcome (Ready for Delivery / On Hold / Transferred).
+  const [verificationStatus, setVerificationStatus] = useState<OrderShape["verificationStatus"]>(initial?.verificationStatus ?? null);
 
   const [companies, setCompanies] = useState<string[]>(initial?.fulfillmentCompanies ?? []);
   const [handler, setHandler] = useState<OrderShape["handler"]>(initial?.handler ?? null);
@@ -92,10 +95,18 @@ export default function OrderForm(props: Props) {
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState(
     initial?.requestedDeliveryDate?.slice(0, 10) ?? "",
   );
-  const [deliveredDate, setDeliveredDate] = useState(initial?.deliveredAt?.slice(0, 10) ?? "");
-  const [dispatcherId, setDispatcherId] = useState<number | null>(initial?.dispatcherId ?? null);
-  const [items, setItems] = useState<Array<{ equipmentId: string; quantity: number }>>(
-    initial?.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity })) ?? [],
+  // Eldercare toggle replaces the legacy ELDERCARE work-order type.
+  const [eldercare, setEldercare] = useState<boolean>(initial?.eldercare ?? false);
+  // Items now carry per-row driver + completedAt (replaces the order-level
+  // dispatcherId + deliveredAt fields). Drivers are independent per line so
+  // one order can split across multiple drivers and dates.
+  const [items, setItems] = useState<Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string }>>(
+    initial?.items.map((it) => ({
+      equipmentId: it.equipmentId,
+      quantity: it.quantity,
+      driverId: it.driverId ?? null,
+      completedAt: it.completedAt?.slice(0, 10) ?? "",
+    })) ?? [],
   );
   const [noteDraft, setNoteDraft] = useState("");
 
@@ -143,6 +154,7 @@ export default function OrderForm(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderType,
+          eldercare,
           csrId,
           patientFirst,
           patientLast,
@@ -157,21 +169,22 @@ export default function OrderForm(props: Props) {
           deductibleStatus: deductible,
           coinsurancePct: coinsurancePct.trim() === "" ? null : Number(coinsurancePct),
           deductibleAmount: deductibleAmount.trim() === "" ? null : Number(deductibleAmount),
-          planMemberId: planMemberId.trim() === "" ? null : planMemberId.trim(),
-          planName: planName.trim() === "" ? null : planName.trim(),
-          planType,
           authStatus,
+          pendingDocuments: authStatus === "PENDING_DOCUMENTS" ? pendingDocuments : [],
+          verificationStatus,
           dosSubmitted: dosSubmitted || null,
-          dataEntryStatus,
-          billingStatus,
           // Fulfillment & dispatch (Stage 3) — optional at create.
           fulfillmentCompanies: companies,
           handler,
-          dispatcherId,
-          deliveredAt: deliveredDate || null,
           status,
           cancellationReason: statusReason || null,
-          items,
+          // Per-item driver + completedAt replace the old order-level fields.
+          items: items.map((it) => ({
+            equipmentId: it.equipmentId,
+            quantity: it.quantity,
+            driverId: it.driverId,
+            completedAt: it.completedAt || null,
+          })),
           noteToAdd: noteDraft.trim() || null,
         }),
       });
@@ -201,6 +214,7 @@ export default function OrderForm(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderType,
+          eldercare,
           csrId,
           patientFirst,
           patientLast,
@@ -212,20 +226,21 @@ export default function OrderForm(props: Props) {
           deductibleStatus: deductible,
           coinsurancePct: coinsurancePct.trim() === "" ? null : Number(coinsurancePct),
           deductibleAmount: deductibleAmount.trim() === "" ? null : Number(deductibleAmount),
-          planMemberId: planMemberId.trim() === "" ? null : planMemberId.trim(),
-          planName: planName.trim() === "" ? null : planName.trim(),
-          planType,
           authStatus,
+          pendingDocuments: authStatus === "PENDING_DOCUMENTS" ? pendingDocuments : [],
+          verificationStatus,
           dosSubmitted: dosSubmitted || null,
-          dataEntryStatus,
-          billingStatus,
           fulfillmentCompanies: companies,
           handler,
           dischargeDate: dischargeDate || null,
           requestedDeliveryDate: requestedDeliveryDate || null,
-          deliveredAt: deliveredDate || null,
-          dispatcherId,
-          items,
+          // Per-item driver + completedAt (no more order-level dispatcherId / deliveredAt).
+          items: items.map((it) => ({
+            equipmentId: it.equipmentId,
+            quantity: it.quantity,
+            driverId: it.driverId,
+            completedAt: it.completedAt || null,
+          })),
           noteToAdd: noteDraft.trim() || null,
           status,
           cancellationReason: statusReason,
@@ -302,7 +317,7 @@ export default function OrderForm(props: Props) {
         />,
       );
     }
-    if (o.stage === "READY_TO_ASSIGN" && dispatcherId && !o.printedAt) {
+    if (o.stage === "READY_TO_ASSIGN" && items.some((it) => it.driverId != null) && !o.printedAt) {
       buttons.push(
         <ActionBtn
           key="print"
@@ -503,15 +518,26 @@ export default function OrderForm(props: Props) {
               subtitle="The details captured the moment a referral call comes in."
             >
               {isCreate && (
-                <div className="mb-3">
+                <div className="mb-3 grid" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 200px)", gap: 12, alignItems: "end" }}>
                   <SearchSelect
                     label="Work Order Type"
                     value={workOrderType}
                     onChange={(v) => setWorkOrderType((v as WorkOrderType) ?? "DELIVERY")}
-                    options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
-                      value: k,
-                      label: WORK_ORDER_TYPE_LABELS[k],
-                    }))}
+                    // Brent 2026-06: ELDERCARE + SERVICE_PICKUP no longer
+                    // selectable. ELDERCARE is replaced by the boolean
+                    // eldercare flag below; SERVICE_PICKUP folds into PICK_UP.
+                    options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[])
+                      .filter((k) => k !== "ELDERCARE" && k !== "SERVICE_PICKUP")
+                      .map((k) => ({ value: k, label: WORK_ORDER_TYPE_LABELS[k] }))}
+                  />
+                  <SegmentedSelect
+                    label="Eldercare"
+                    value={eldercare ? "YES" : "NO"}
+                    onChange={(v) => setEldercare(v === "YES")}
+                    options={[
+                      { value: "NO",  label: "No" },
+                      { value: "YES", label: "Yes" },
+                    ]}
                   />
                 </div>
               )}
@@ -568,11 +594,12 @@ export default function OrderForm(props: Props) {
                   onChange={setRequestedDeliveryDate}
                 />
                 <div style={{ gridColumn: "1 / -1" }}>
-                  <Label>Equipment Being Ordered</Label>
+                  <Label>Equipment</Label>
                   <EquipmentPicker
                     equipment={lookups.equipment}
                     value={items}
                     onChange={setItems}
+                    defaults={{ driverId: null, completedAt: "" }}
                   />
                 </div>
               </div>
@@ -600,33 +627,9 @@ export default function OrderForm(props: Props) {
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
-                <Input
-                  label="Plan ID"
-                  value={planMemberId}
-                  onChange={(v) => setPlanMemberId(v.replace(/[^\d]/g, "").slice(0, 20))}
-                  inputMode="numeric"
-                  placeholder="10183281800"
-                />
-                <SegmentedSelect
-                  label="Plan Type"
-                  value={planType}
-                  onChange={(v) => setPlanType((v as PlanType | null) ?? null)}
-                  options={(Object.keys(PLAN_TYPE_LABELS) as PlanType[]).map((k) => ({
-                    value: k,
-                    label: PLAN_TYPE_LABELS[k],
-                  }))}
-                />
-              </div>
-
-              <div style={{ marginTop: 12 }}>
-                <Input
-                  label="Plan Name"
-                  value={planName}
-                  onChange={setPlanName}
-                  placeholder="HAP Medicare Superior (HMO) Individual Plan 028"
-                />
-              </div>
+              {/* Brent 2026-06: Plan ID / Plan Type / Plan Name removed.
+                  Existing rows keep their values in the DB until commit B drops
+                  the columns. The form no longer reads or writes them. */}
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <SegmentedSelect
@@ -677,33 +680,46 @@ export default function OrderForm(props: Props) {
               </div>
 
               {authStatus !== "NOT_REQ" && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+                <div style={{ marginTop: 12 }}>
                   <Input
                     label="DOS Submitted"
                     type="date"
                     value={dosSubmitted}
                     onChange={setDosSubmitted}
                   />
-                  <SearchSelect
-                    label="Data Entry"
-                    value={dataEntryStatus}
-                    onChange={(v) => setDataEntryStatus((v as DataEntryStatus | null) ?? null)}
-                    options={(Object.keys(DATA_ENTRY_LABELS) as DataEntryStatus[]).map((k) => ({
-                      value: k,
-                      label: DATA_ENTRY_LABELS[k],
-                    }))}
-                  />
-                  <SearchSelect
-                    label="Billing"
-                    value={billingStatus}
-                    onChange={(v) => setBillingStatus((v as BillingStatus | null) ?? null)}
-                    options={(Object.keys(BILLING_LABELS) as BillingStatus[]).map((k) => ({
-                      value: k,
-                      label: BILLING_LABELS[k],
-                    }))}
+                </div>
+              )}
+
+              {/* Brent 2026-06: conditional reveal — only when authStatus is
+                  PENDING_DOCUMENTS. Lets the team check off exactly which
+                  documents the auth packet is missing. */}
+              {authStatus === "PENDING_DOCUMENTS" && (
+                <div style={{ marginTop: 12 }}>
+                  <Label>Pending Documents</Label>
+                  <ChipMulti
+                    value={pendingDocuments}
+                    onToggle={(key) =>
+                      setPendingDocuments((prev) =>
+                        prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+                      )
+                    }
+                    options={PENDING_DOCUMENT_OPTIONS.map((d) => ({ key: d.key, label: d.label }))}
                   />
                 </div>
               )}
+
+              {/* Brent 2026-06: manual outcome for the Verification step. */}
+              <div style={{ marginTop: 12 }}>
+                <SegmentedSelect
+                  label="Verification Status"
+                  value={verificationStatus}
+                  onChange={(v) => setVerificationStatus((v as VerificationStatus | null) ?? null)}
+                  options={(Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
+                    value: k,
+                    label: VERIFICATION_STATUS_LABELS[k],
+                  }))}
+                />
+              </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <div>
@@ -740,18 +756,28 @@ export default function OrderForm(props: Props) {
                 </>
               )}
 
-              <SubHeader label="2 · Assign" first={isCreate} />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-                {isBlockingStatus(status) ? (
-                  <DispatcherLocked statusLabel={STATUS_LABELS[status]} />
-                ) : (
-                  <UserSelect
-                    label="Dispatcher"
-                    value={dispatcherId}
-                    onChange={setDispatcherId}
-                    options={lookups.dispatchers}
-                  />
-                )}
+              <SubHeader label="2 · Driver assignments" first={isCreate} />
+              {/* Brent 2026-06: one driver + one completion date per line item.
+                  Replaces the order-level Dispatcher + Delivery Date so one
+                  order can split across multiple drivers/days. Items come
+                  from Stage 1's equipment picker — add equipment there first
+                  if the list is empty. */}
+              {isBlockingStatus(status) ? (
+                <DispatcherLocked statusLabel={STATUS_LABELS[status]} />
+              ) : items.length === 0 ? (
+                <div style={{ padding: "12px 14px", fontSize: 12, color: "#64748d", background: "#f6f9fc", border: "1px solid #e5edf5", borderRadius: 4 }}>
+                  Add equipment in Stage 1 first — driver and completion date attach to each line item.
+                </div>
+              ) : (
+                <PerItemDrivers
+                  items={items}
+                  equipmentLookup={lookups.equipment}
+                  driverLookup={lookups.dispatchers}
+                  onChange={setItems}
+                />
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <SegmentedSelect
                   label="Handler"
                   value={handler}
@@ -765,7 +791,7 @@ export default function OrderForm(props: Props) {
               </div>
 
               <SubHeader label="3 · Schedule" />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
                 <ReadonlyDate
                   label="Discharge Date"
                   iso={isCreate ? (dischargeDate || null) : (initial as OrderShape).dischargeDate}
@@ -773,12 +799,6 @@ export default function OrderForm(props: Props) {
                 <ReadonlyDate
                   label="Requested Delivery"
                   iso={isCreate ? (requestedDeliveryDate || null) : (initial as OrderShape).requestedDeliveryDate}
-                />
-                <Input
-                  label="Delivery Date"
-                  type="date"
-                  value={deliveredDate}
-                  onChange={setDeliveredDate}
                 />
               </div>
 
@@ -1060,6 +1080,92 @@ function DispatcherLocked({ statusLabel }: { statusLabel: string }) {
       >
         Locked — order is {statusLabel}.
       </div>
+    </div>
+  );
+}
+
+// Per-item driver + completion table for Stage 3. One row per OrderItem.
+// Each row shows the equipment name + qty (read-only) and exposes a driver
+// dropdown + completed-date input. Driver list is shared with the rest of
+// the form via Lookups (legacy "dispatchers" key — Phase 3 renames it).
+function PerItemDrivers({
+  items,
+  equipmentLookup,
+  driverLookup,
+  onChange,
+}: {
+  items: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string }>;
+  equipmentLookup: Lookups["equipment"];
+  driverLookup: Lookups["dispatchers"];
+  onChange: (items: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string }>) => void;
+}) {
+  function patch(idx: number, p: Partial<{ driverId: number | null; completedAt: string }>) {
+    onChange(items.map((it, i) => (i === idx ? { ...it, ...p } : it)));
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {items.map((it, idx) => {
+        const eq = equipmentLookup.find((e) => e.id === it.equipmentId);
+        const label = eq ? `${eq.name}${it.quantity > 1 ? ` ×${it.quantity}` : ""}` : `Unknown equipment (${it.equipmentId.slice(0, 8)})`;
+        return (
+          <div
+            key={it.equipmentId}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)",
+              gap: 8,
+              padding: "8px 10px",
+              background: "#f6f9fc",
+              border: "1px solid #e5edf5",
+              borderRadius: 4,
+              alignItems: "center",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "#061b31", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {label}
+              </div>
+              {eq?.abbreviation && (
+                <div style={{ fontSize: 11, color: "#64748d", fontFamily: "SourceCodePro, ui-monospace, monospace" }}>
+                  {eq.abbreviation}{eq.hcpcsCode ? ` · ${eq.hcpcsCode}` : ""}
+                </div>
+              )}
+            </div>
+            <select
+              value={it.driverId ?? ""}
+              onChange={(e) => patch(idx, { driverId: e.target.value ? Number(e.target.value) : null })}
+              style={{
+                padding: "6px 8px",
+                fontSize: 13,
+                color: "#273951",
+                background: "#fff",
+                border: "1px solid #e5edf5",
+                borderRadius: 4,
+              }}
+            >
+              <option value="">Unassigned</option>
+              {driverLookup.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={it.completedAt}
+              onChange={(e) => patch(idx, { completedAt: e.target.value })}
+              style={{
+                padding: "6px 8px",
+                fontSize: 13,
+                color: "#273951",
+                background: "#fff",
+                border: "1px solid #e5edf5",
+                borderRadius: 4,
+                fontFeatureSettings: '"tnum"',
+              }}
+              aria-label="Completed date"
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

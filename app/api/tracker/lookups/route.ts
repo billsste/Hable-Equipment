@@ -23,8 +23,21 @@ export async function GET(request: Request) {
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    // Driver list. The backfill renames role 'dispatcher' → 'driver' on
+    // existing accounts, but the User.roles[] array isn't migrated, so a
+    // user with role='driver' may still carry 'dispatcher' in roles[]. We
+    // include either source so the picker stays populated through the
+    // transition (and after, when commit B drops the legacy enum value).
     db.user.findMany({
-      where: { roles: { has: "dispatcher" }, active: true },
+      where: {
+        active: true,
+        OR: [
+          { role: "driver" },
+          { role: "dispatcher" },
+          { roles: { has: "driver" } },
+          { roles: { has: "dispatcher" } },
+        ],
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

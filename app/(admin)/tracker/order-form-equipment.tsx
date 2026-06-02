@@ -5,14 +5,23 @@ import { X } from "lucide-react";
 import { usePopoverList } from "./order-form-atoms";
 import type { Lookups } from "./TrackerClient";
 
-export function EquipmentPicker({
+// Generic over the row shape so callers can carry extra per-item fields
+// (driverId, completedAt, etc.) without the picker stripping them. The
+// picker only ever reads/writes equipmentId + quantity; everything else
+// passes through on insert / update / delete unchanged.
+export function EquipmentPicker<T extends { equipmentId: string; quantity: number }>({
   equipment,
   value,
   onChange,
+  defaults,
 }: {
   equipment: Lookups["equipment"];
-  value: Array<{ equipmentId: string; quantity: number }>;
-  onChange: (v: Array<{ equipmentId: string; quantity: number }>) => void;
+  value: Array<T>;
+  onChange: (v: Array<T>) => void;
+  /** Extra fields to merge onto a newly-created row. Defaults to {} so the
+   *  picker stays backwards-compatible for callers that only need the basic
+   *  equipmentId + quantity shape. */
+  defaults?: Omit<T, "equipmentId" | "quantity">;
 }) {
   const [search, setSearch] = useState("");
 
@@ -43,7 +52,9 @@ export function EquipmentPicker({
     } else if (value.some((it) => it.equipmentId === equipmentId)) {
       onChange(value.map((it) => (it.equipmentId === equipmentId ? { ...it, quantity: qty } : it)));
     } else {
-      onChange([...value, { equipmentId, quantity: qty }]);
+      // New row: include caller-provided defaults for any extra fields the
+      // generic T type carries (driverId, completedAt, etc.).
+      onChange([...value, { equipmentId, quantity: qty, ...(defaults ?? {}) } as T]);
     }
   }
 

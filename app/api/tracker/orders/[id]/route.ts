@@ -231,6 +231,35 @@ export async function PATCH(
       pushDiff(events, who, ORDER_FIELD_LABELS.handler, existing.handler, newVal);
     }
   }
+  // Brent 2026-06 fields
+  if ("eldercare" in body) {
+    const newVal = body.eldercare === true;
+    if (newVal !== existing.eldercare) {
+      data.eldercare = newVal;
+      pushDiff(events, who, "Eldercare", existing.eldercare ? "yes" : "no", newVal ? "yes" : "no");
+    }
+  }
+  if ("verificationStatus" in body) {
+    const raw = body.verificationStatus;
+    const newVal = (raw === "READY_FOR_DELIVERY" || raw === "ON_HOLD" || raw === "TRANSFERRED")
+      ? (raw as "READY_FOR_DELIVERY" | "ON_HOLD" | "TRANSFERRED")
+      : null;
+    if (newVal !== existing.verificationStatus) {
+      data.verificationStatus = newVal;
+      pushDiff(events, who, "Verification status", existing.verificationStatus ?? "", newVal ?? "");
+    }
+  }
+  if ("pendingDocuments" in body && Array.isArray(body.pendingDocuments)) {
+    const newVal = (body.pendingDocuments as unknown[])
+      .filter((v): v is string => typeof v === "string")
+      .slice(0, 10);
+    const oldStr = (existing.pendingDocuments ?? []).slice().sort().join(",");
+    const newStr = newVal.slice().sort().join(",");
+    if (oldStr !== newStr) {
+      data.pendingDocuments = newVal;
+      pushDiff(events, who, "Pending documents", oldStr || "—", newStr || "—");
+    }
+  }
   if ("workOrderType" in body && VALID_WORK_ORDER_TYPES.includes(body.workOrderType as WorkOrderType)) {
     const newVal = body.workOrderType as WorkOrderType;
     if (newVal !== existing.workOrderType) {
@@ -444,13 +473,22 @@ export async function PATCH(
   });
 
   let itemsChanged = false;
-  let newItemRows: Array<{ equipmentId: string; quantity: number }> = [];
+  let newItemRows: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: Date | null }> = [];
   if ("items" in body && Array.isArray(body.items)) {
-    newItemRows = (body.items as Array<{ equipmentId?: unknown; quantity?: unknown }>)
+    newItemRows = (body.items as Array<{
+      equipmentId?: unknown;
+      quantity?: unknown;
+      driverId?: unknown;
+      completedAt?: unknown;
+    }>)
       .filter((it) => typeof it.equipmentId === "string" && (it.equipmentId as string).length > 0)
       .map((it) => ({
         equipmentId: it.equipmentId as string,
         quantity: typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : 1,
+        driverId: typeof it.driverId === "number" ? it.driverId : null,
+        completedAt: typeof it.completedAt === "string" && it.completedAt
+          ? new Date(it.completedAt + "T00:00:00.000Z")
+          : null,
       }));
 
     const itemDetail = await diffItems(existing.items, newItemRows);
@@ -479,7 +517,13 @@ export async function PATCH(
     if (newItemRows.length) {
       ops.push(
         db.orderItem.createMany({
-          data: newItemRows.map((it) => ({ orderId: id, equipmentId: it.equipmentId, quantity: it.quantity })),
+          data: newItemRows.map((it) => ({
+            orderId: id,
+            equipmentId: it.equipmentId,
+            quantity: it.quantity,
+            driverId: it.driverId,
+            completedAt: it.completedAt,
+          })),
         }),
       );
     }
