@@ -11,6 +11,7 @@ import {
   LifeBuoy,
   ListChecks,
   BarChart3,
+  CalendarDays,
   Package,
   Menu,
   X,
@@ -36,6 +37,7 @@ type NavItem = {
 // legacy role. New roles get added here, not branched on per-route.
 const NAV_ITEMS: NavItem[] = [
   { label: "Tracker",       href: "/tracker",       icon: <ListChecks size={18} />,         roles: ["supplier", "driver", "dispatcher", "csr"] },
+  { label: "Schedule",      href: "/schedule",      icon: <CalendarDays size={18} />,       roles: ["supplier", "driver", "dispatcher"] },
   { label: "Reporting",     href: "/reporting",     icon: <BarChart3 size={18} />,          roles: ["supplier"] },
   { label: "Inventory",     href: "/inventory",     icon: <Package size={18} />,            roles: ["supplier", "driver", "dispatcher"] },
   { label: "Configuration", href: "/configuration", icon: <SlidersHorizontal size={18} />,  roles: ["supplier"] },
