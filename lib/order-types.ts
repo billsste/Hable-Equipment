@@ -1,4 +1,6 @@
-import type { OrderStage, AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, DataEntryStatus, BillingStatus, WorkOrderType, PlanType } from "@prisma/client";
+import type { OrderStage, AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, DataEntryStatus, BillingStatus, WorkOrderType, PlanType, VerificationStatus } from "@prisma/client";
+
+export type { VerificationStatus };
 
 export type OrderShape = {
   id: string;
@@ -172,17 +174,23 @@ export const AUTH_LABELS: Record<AuthStatus, string> = {
   REQUIRED: "Required",
   READY_TO_SUBMIT: "Ready to Submit",
   PENDING_SIGNATURE: "Pending Signature",
+  PENDING_DOCUMENTS: "Pending Documents",
   SUBMITTED: "Submitted",
   UNDER_REVIEW: "Under Review",
   APPROVED: "Approved",
   DENIED: "Denied",
 };
 
+// Auth state transitions. PENDING_DOCUMENTS is the new "pending more info"
+// state per Brent's call — accessible from any in-flight state, and resolves
+// out to SUBMITTED (or back to READY_TO_SUBMIT if the missing docs come in
+// before the auth packet goes out).
 export const AUTH_NEXT: Record<AuthStatus, ReadonlyArray<AuthStatus>> = {
   NOT_REQ:           ["REQUIRED"],
-  REQUIRED:          ["NOT_REQ", "READY_TO_SUBMIT", "PENDING_SIGNATURE"],
-  READY_TO_SUBMIT:   ["REQUIRED", "PENDING_SIGNATURE", "SUBMITTED"],
-  PENDING_SIGNATURE: ["READY_TO_SUBMIT", "SUBMITTED"],
+  REQUIRED:          ["NOT_REQ", "READY_TO_SUBMIT", "PENDING_SIGNATURE", "PENDING_DOCUMENTS"],
+  READY_TO_SUBMIT:   ["REQUIRED", "PENDING_SIGNATURE", "PENDING_DOCUMENTS", "SUBMITTED"],
+  PENDING_SIGNATURE: ["READY_TO_SUBMIT", "PENDING_DOCUMENTS", "SUBMITTED"],
+  PENDING_DOCUMENTS: ["READY_TO_SUBMIT", "SUBMITTED"],
   SUBMITTED:         ["UNDER_REVIEW", "APPROVED", "DENIED"],
   UNDER_REVIEW:      ["APPROVED", "DENIED"],
   APPROVED:          ["UNDER_REVIEW", "DENIED"],
@@ -201,9 +209,31 @@ export const AUTH_IN_FLIGHT: ReadonlyArray<AuthStatus> = [
   "REQUIRED",
   "READY_TO_SUBMIT",
   "PENDING_SIGNATURE",
+  "PENDING_DOCUMENTS",
   "SUBMITTED",
   "UNDER_REVIEW",
 ];
+
+// Five Pending-Documents checkboxes per Brent's call. Stored as String[] in
+// Order.pendingDocuments; the keys mirror the WhatsNeededOption shape (stable
+// uppercase identifiers + human label).
+export const PENDING_DOCUMENT_OPTIONS = [
+  { key: "DIAGNOSIS_CODE", label: "Diagnosis Code" },
+  { key: "SIGNATURE",      label: "Signature" },
+  { key: "FACE_SHEET",     label: "Face Sheet" },
+  { key: "PICKUP_TICKET",  label: "Pick Up Ticket" },
+  { key: "NOTES",          label: "Notes" },
+] as const;
+
+export type PendingDocument = (typeof PENDING_DOCUMENT_OPTIONS)[number]["key"];
+
+// Brent's manual outcome for the Verification step. Distinct from the
+// auto-derived OrderStage. Enum lives in Prisma; this is the display map.
+export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
+  READY_FOR_DELIVERY: "Ready for Delivery",
+  ON_HOLD: "On Hold",
+  TRANSFERRED: "Transferred",
+};
 
 export const STATUS_LABELS: Record<OutcomeStatus, string> = {
   ACTIVE: "Active",
@@ -283,6 +313,7 @@ export const AUTH_COLORS: Record<AuthStatus, { bg: string; color: string }> = {
   REQUIRED:          { bg: "rgba(83,58,253,0.10)",   color: "#4434d4" },
   READY_TO_SUBMIT:   { bg: "rgba(234,34,97,0.12)",   color: "#b41850" },
   PENDING_SIGNATURE: { bg: "rgba(245,158,11,0.18)",  color: "#7a5320" },
+  PENDING_DOCUMENTS: { bg: "rgba(245,158,11,0.20)",  color: "#9b6829" },
   SUBMITTED:         { bg: "rgba(155,104,41,0.14)",  color: "#9b6829" },
   UNDER_REVIEW:      { bg: "rgba(229,72,77,0.12)",   color: "#b03238" },
   APPROVED:          { bg: "rgba(21,190,83,0.18)",   color: "#108c3d" },

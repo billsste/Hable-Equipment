@@ -28,12 +28,18 @@ model User {
   assignedTickets Ticket[]  @relation("AssignedTo")
   csrOrders       Order[]   @relation("OrderCsr")
   dispatcherOrders Order[]  @relation("OrderDispatcher")
+  driverItems     OrderItem[] @relation("OrderItemDriver")
   intakeOrders    Order[]   @relation("OrderIntakeBy")
   uploadedAttachments OrderAttachment[] @relation("OrderAttachmentUploadedBy")
 }
 
 enum UserRole {
   supplier
+  // `driver` replaces `dispatcher` per Brent's call (2026-06). `dispatcher`
+  // is retained for back-compat in this commit; the backfill in
+  // prisma/backfills/ migrates existing rows. A follow-up migration drops
+  // the dispatcher value once nothing references it.
+  driver
   dispatcher
   csr
 }
@@ -207,10 +213,23 @@ enum AuthStatus {
   REQUIRED
   READY_TO_SUBMIT
   PENDING_SIGNATURE
+  // PENDING_DOCUMENTS replaces the legacy multi-step "pending" states per
+  // Brent's call. When selected, the UI reveals Order.pendingDocuments
+  // (multi-select of DIAGNOSIS_CODE / SIGNATURE / FACE_SHEET / PICKUP_TICKET
+  // / NOTES). PENDING_SIGNATURE backfills into this value.
+  PENDING_DOCUMENTS
   SUBMITTED
   UNDER_REVIEW
   APPROVED
   DENIED
+}
+
+// Brent-stage manual outcome for the Verification step — not derived. Distinct
+// from OrderStage (lifecycle) and OutcomeStatus (overall lifecycle outcome).
+enum VerificationStatus {
+  READY_FOR_DELIVERY
+  ON_HOLD
+  TRANSFERRED
 }
 
 enum DataEntryStatus {
@@ -301,6 +320,18 @@ model Order {
   status                OutcomeStatus @default(ACTIVE) // outcome state — ACTIVE | ON_HOLD | TRANSFERRED | REJECTED | CANCELLED | DELIVERED | WRITE_OFF
   handler               HandlerType? // future split
 
+  // Verification-step manual outcome per Brent (2026-06). Independent of the
+  // automatic OrderStage derivation.
+  verificationStatus    VerificationStatus?
+  // Eldercare flag replaces the ELDERCARE work-order type — the type is now
+  // independent of the eldercare nature of the order.
+  eldercare             Boolean @default(false)
+  // Multi-select that's only meaningful when authStatus = PENDING_DOCUMENTS.
+  // Stored as string keys (DIAGNOSIS_CODE / SIGNATURE / FACE_SHEET /
+  // PICKUP_TICKET / NOTES) — same kind of admin-stable enum the
+  // whatsNeeded array uses, no separate lookup table for a fixed set of 5.
+  pendingDocuments      String[] @default([])
+
   // ── Dates ──
   callReceivedDate      DateTime?
   dischargeDate         DateTime? // DC Date — most workflow-critical
@@ -347,6 +378,18 @@ model OrderItem {
   equipmentId String
   equipment   Equipment @relation(fields: [equipmentId], references: [id])
   quantity    Int       @default(1)
+
+  // Per-item driver + completion date — replaces order-level dispatcherId /
+  // deliveredAt per Brent (2026-06). One order can now have multiple drivers
+  // and multiple completion dates (e.g. "Steve delivers beds today; Brent
+  // delivers chairs tomorrow"). Backfill copies the order-level values onto
+  // every item in prisma/backfills/.
+  driverId    Int?
+  driver      User?     @relation("OrderItemDriver", fields: [driverId], references: [id])
+  completedAt DateTime?
+
+  @@index([driverId])
+  @@index([completedAt])
 }
 
 model OrderEvent {

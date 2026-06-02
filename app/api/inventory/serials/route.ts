@@ -15,7 +15,7 @@ function cleanSn(s: string): string {
 // inventory screen's filters. Supplier + dispatcher can read; supplier owns
 // writes so par-level tracking has a single source of edits.
 export async function GET(request: Request) {
-  const guard = await requireRole(request, ["supplier", "dispatcher"]);
+  const guard = await requireRole(request, ["supplier", "driver", "dispatcher"]);
   if ("error" in guard) return guard.error;
   const rows = await db.serialItem.findMany({
     include: { equipment: { select: { id: true, name: true, category: true, abbreviation: true } } },

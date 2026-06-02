@@ -1,6 +1,8 @@
 import { db } from "./db";
 
-export type UserRole = "supplier" | "dispatcher" | "csr";
+// `dispatcher` is kept for back-compat in this commit; a follow-up migration
+// drops it once the backfill has migrated every existing user to `driver`.
+export type UserRole = "supplier" | "driver" | "dispatcher" | "csr";
 
 export type AuditEntry = {
   id: string;

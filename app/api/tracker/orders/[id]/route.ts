@@ -31,7 +31,7 @@ const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE", "ON_HOLD", "LOOSE_ENDS", "TRANSFERRED", "REJECTED", "CANCELLED", "DELIVERED", "WRITE_OFF",
 ];
 
-const ALLOWED_PATCH_ROLES: ReadonlyArray<string> = ["supplier", "csr", "dispatcher"];
+const ALLOWED_PATCH_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver", "dispatcher"];
 
 type Event = OrderEventInput;
 

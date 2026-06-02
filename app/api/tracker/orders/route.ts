@@ -43,7 +43,9 @@ const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE", "ON_HOLD", "LOOSE_ENDS", "TRANSFERRED", "REJECTED", "CANCELLED", "DELIVERED", "WRITE_OFF",
 ];
 
-const ALLOWED_CREATE_ROLES: ReadonlyArray<string> = ["supplier", "csr", "dispatcher"];
+// `dispatcher` is legacy (renamed to `driver` per Brent 2026-06); both are
+// accepted until the backfill + commit B retire the old role.
+const ALLOWED_CREATE_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver", "dispatcher"];
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);

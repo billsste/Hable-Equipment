@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 
-type UserRole = "supplier" | "dispatcher" | "csr";
+type UserRole = "supplier" | "driver" | "dispatcher" | "csr";
 
 type SidebarUser = {
   id: number;
@@ -32,21 +32,26 @@ type NavItem = {
   roles: UserRole[];
 };
 
+// `driver` + `dispatcher` get the same nav visibility until commit B drops the
+// legacy role. New roles get added here, not branched on per-route.
 const NAV_ITEMS: NavItem[] = [
-  { label: "Tracker",       href: "/tracker",       icon: <ListChecks size={18} />,         roles: ["supplier", "dispatcher", "csr"] },
+  { label: "Tracker",       href: "/tracker",       icon: <ListChecks size={18} />,         roles: ["supplier", "driver", "dispatcher", "csr"] },
   { label: "Reporting",     href: "/reporting",     icon: <BarChart3 size={18} />,          roles: ["supplier"] },
-  { label: "Inventory",     href: "/inventory",     icon: <Package size={18} />,            roles: ["supplier", "dispatcher"] },
+  { label: "Inventory",     href: "/inventory",     icon: <Package size={18} />,            roles: ["supplier", "driver", "dispatcher"] },
   { label: "Configuration", href: "/configuration", icon: <SlidersHorizontal size={18} />,  roles: ["supplier"] },
   { label: "Users",         href: "/users",         icon: <Users size={18} />,              roles: ["supplier"] },
   { label: "Audit Log",     href: "/audit-log",     icon: <ClipboardList size={18} />,      roles: ["supplier"] },
-  { label: "Support",       href: "/support",       icon: <LifeBuoy size={18} />,           roles: ["supplier", "dispatcher", "csr"] },
-  { label: "Account",       href: "/account",       icon: <ShieldCheck size={18} />,        roles: ["supplier", "dispatcher", "csr"] },
+  { label: "Support",       href: "/support",       icon: <LifeBuoy size={18} />,           roles: ["supplier", "driver", "dispatcher", "csr"] },
+  { label: "Account",       href: "/account",       icon: <ShieldCheck size={18} />,        roles: ["supplier", "driver", "dispatcher", "csr"] },
 ];
 
+// Driver is the new role; dispatcher renders identically until the backfill
+// migrates the last rows and commit B drops the legacy value from the enum.
 const ROLE_LABELS: Record<UserRole, string> = {
   supplier:   "Administrator",
   csr:        "Customer Service",
-  dispatcher: "Dispatcher",
+  driver:     "Driver",
+  dispatcher: "Driver",
 };
 
 export default function AdminSidebar({ user }: { user: SidebarUser }) {

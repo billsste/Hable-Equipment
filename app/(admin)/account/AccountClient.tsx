@@ -8,7 +8,7 @@ type Me = {
   id: number;
   name: string;
   email: string;
-  role: "supplier" | "dispatcher" | "csr";
+  role: "supplier" | "driver" | "dispatcher" | "csr";
   mfaEnabled: boolean;
   mfaEnrolledAt: string | null;
   backupCodesRemaining: number;
@@ -101,7 +101,12 @@ export default function AccountClient({ me: initialMe }: { me: Me }) {
       <Card title="Profile">
         <Row label="Name" value={me.name} />
         <Row label="Email" value={me.email} />
-        <Row label="Role" value={me.role === "supplier" ? "Administrator" : me.role === "dispatcher" ? "Dispatcher" : "Customer Service"} />
+        <Row label="Role" value={
+          me.role === "supplier" ? "Administrator"
+          : me.role === "driver" ? "Driver"
+          : me.role === "dispatcher" ? "Driver"  // legacy label fallback; backfill renames the rows
+          : "Customer Service"
+        } />
       </Card>
 
       {/* MFA card */}

@@ -13,7 +13,7 @@ import {
 // List all attachments for an order (metadata only — bytes are streamed by
 // the [attachmentId] route on demand).
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const guard = await requireRole(request, ["supplier", "csr", "dispatcher"]);
+  const guard = await requireRole(request, ["supplier", "csr", "driver", "dispatcher"]);
   if ("error" in guard) return guard.error;
   const { id } = await ctx.params;
   const rows = await db.orderAttachment.findMany({
@@ -41,7 +41,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
 // Upload one file via multipart/form-data. The route caps file count + bytes
 // and refuses anything outside the document/image allow-list.
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const guard = await requireRole(request, ["supplier", "csr", "dispatcher"]);
+  const guard = await requireRole(request, ["supplier", "csr", "driver", "dispatcher"]);
   if ("error" in guard) return guard.error;
   const { id } = await ctx.params;
 

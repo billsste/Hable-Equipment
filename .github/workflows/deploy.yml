@@ -81,6 +81,17 @@ jobs:
           echo "Applying schema via prisma db push..."
           docker compose exec -T app npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss </dev/null
           echo "Schema applied successfully."
+
+          echo "Running idempotent SQL backfills (if any)..."
+          # Each file under prisma/backfills/ is idempotent and runs in name
+          # order. New backfills get a YYYY-MM-DD prefix to make the order
+          # explicit. </dev/null on each exec — without it the loop iteration
+          # eats the rest of the script.
+          for f in $(docker compose exec -T app sh -c 'ls -1 ./prisma/backfills/*.sql 2>/dev/null || true' </dev/null); do
+            echo "  backfill: $f"
+            docker compose exec -T app npx prisma db execute --schema=./prisma/schema.prisma --file="$f" </dev/null
+          done
+          echo "Backfills complete."
           REMOTE
 
       # Smoke against localhost on the droplet to skip Cloudflare's bot challenge
