@@ -805,7 +805,7 @@ export default function OrderForm(props: Props) {
               <SubHeader label="4 · Outcome" />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
                 <SearchSelect
-                  label="Status"
+                  label="Delivery Status"
                   value={status}
                   onChange={(v) => {
                     const next = (v ?? "ACTIVE") as OutcomeStatus;

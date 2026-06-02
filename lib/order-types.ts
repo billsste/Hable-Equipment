@@ -244,8 +244,13 @@ export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
   TRANSFERRED: "Transferred",
 };
 
+// Renamed "Status" → "Delivery Status" per Brent (2026-06). ACTIVE relabeled
+// to "TBD" since the picker is about the order's delivery outcome — "to be
+// determined" reads more naturally as the default than "Active". OrderStage
+// (auto-derived) still surfaces "Out for Delivery" / "Door Tag" elsewhere;
+// this picker is the manual outcome flag.
 export const STATUS_LABELS: Record<OutcomeStatus, string> = {
-  ACTIVE: "Active",
+  ACTIVE: "TBD",
   ON_HOLD: "On Hold",
   LOOSE_ENDS: "Loose Ends / On Call",
   TRANSFERRED: "Transferred",
