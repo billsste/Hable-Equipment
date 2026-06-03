@@ -82,6 +82,28 @@ const VALID_VIEWS = new Set<ViewKey>(["all", "open", "out", "delivered"]);
 // exactly the options that appear in the dropdown, plus the "custom" sentinel
 // appended once below in DATE_PRESET_OPTIONS.
 type DatePreset = "all" | "7d" | "30d" | "90d" | "ytd" | "custom";
+
+// The user picks which date column the range applies to. "orderDate" keys
+// off the row's creation timestamp (matching the "Order Date" table column);
+// the other three filter on the form-entered scheduling dates.
+type DateField = "orderDate" | "discharge" | "requested" | "dos";
+const DATE_FIELD_OPTIONS: { value: DateField; label: string }[] = [
+  { value: "orderDate", label: "Order Date" },
+  { value: "discharge", label: "Scheduled Discharge Date" },
+  { value: "requested", label: "Requested Delivery Date" },
+  { value: "dos",       label: "DOS Submitted" },
+];
+function pickDateForField(o: OrderShape, field: DateField): string | null {
+  switch (field) {
+    case "orderDate": return o.createdAt;
+    case "discharge": return o.dischargeDate;
+    case "requested": return o.requestedDeliveryDate;
+    case "dos":       return o.dosSubmitted;
+  }
+}
+function labelForDateField(field: DateField): string {
+  return DATE_FIELD_OPTIONS.find((o) => o.value === field)?.label ?? field;
+}
 const DATE_PRESETS: { key: Exclude<DatePreset, "all" | "custom">; label: string }[] = [
   { key: "7d",  label: "Last 7 days" },
   { key: "30d", label: "Last 30 days" },
@@ -132,11 +154,12 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const [editing, setEditing] = useState<OrderShape | null>(null);
   const [creating, setCreating] = useState(initialNew);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "orderDate", dir: "desc" });
-  // Order Date range filter — drives both table results AND CSV/Print output.
-  // Preset "all" → no filter; "custom" → use the inline from/to date inputs.
+  // Date range filter — applies to the date column the user picks via
+  // `dateFieldFilter`. Preset "all" → no filter; "custom" → inline from/to.
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+  const [dateFieldFilter, setDateFieldFilter] = useState<DateField>("orderDate");
   // Time-dependent row badges (auth age, DC blocker) hold until after hydration
   // so a server/client clock skew on Date.now() can't cause a hydration mismatch.
   const [mounted, setMounted] = useState(false);
@@ -156,11 +179,11 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       sortOrders(
         filterOrders(
           orders, view, search,
-          { authFilter, pendingDocFilter, verificationFilter, statusFilter, dateRange },
+          { authFilter, pendingDocFilter, verificationFilter, statusFilter, dateRange, dateField: dateFieldFilter },
         ),
         sort,
       ),
-    [orders, view, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, dateRange, sort],
+    [orders, view, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, dateRange, dateFieldFilter, sort],
   );
   const hasFieldFilter =
     authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || datePreset !== "all";
@@ -220,7 +243,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               `View: ${VIEWS.find((v) => v.key === view)?.label ?? view}`,
               `${filtered.length} record${filtered.length === 1 ? "" : "s"}`,
             ];
-            if (dateRange) chips.push(`Order Date ${dateRange.from} → ${dateRange.to}`);
+            if (dateRange) chips.push(`${labelForDateField(dateFieldFilter)} ${dateRange.from} → ${dateRange.to}`);
             if (authFilter) chips.push(`Auth ${AUTH_LABELS[authFilter as keyof typeof AUTH_LABELS] ?? authFilter}`);
             if (pendingDocFilter) {
               const docLabel = PENDING_DOCUMENT_OPTIONS.find((d) => d.key === pendingDocFilter)?.label ?? pendingDocFilter;
@@ -373,6 +396,17 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             label: STATUS_LABELS[k],
           })))}
         />
+        {/* Date filter: which date + a range. The picker on the left chooses
+            the column the range applies to (Order Date, Scheduled Discharge,
+            Requested Delivery, DOS Submitted); the range picker on the right
+            is the preset / custom range. Both default to "All time". */}
+        <FilterSelect
+          value={dateFieldFilter}
+          onChange={(v) => setDateFieldFilter((v || "orderDate") as DateField)}
+          placeholder="Date field"
+          options={DATE_FIELD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+          clearable={false}
+        />
         <FilterSelect
           value={datePreset === "all" ? "" : datePreset}
           onChange={(v) => {
@@ -392,7 +426,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
-              aria-label="Order date from"
+              aria-label={`${labelForDateField(dateFieldFilter)} from`}
             />
             <span style={{ fontSize: 12, color: "#94a3b8" }}>–</span>
             <input
@@ -400,7 +434,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
-              aria-label="Order date to"
+              aria-label={`${labelForDateField(dateFieldFilter)} to`}
             />
           </>
         )}
@@ -689,6 +723,7 @@ function filterOrders(
     authFilter: string; pendingDocFilter: string;
     verificationFilter: string; statusFilter: string;
     dateRange: { from: string; to: string } | null;
+    dateField: DateField;
   },
 ) {
   let list = orders;
@@ -711,9 +746,14 @@ function filterOrders(
   if (fields.dateRange) {
     // Compare the YYYY-MM-DD slice in UTC so the inclusive boundary matches
     // what the user typed in the date inputs (no TZ drift on either end).
+    // The compared column comes from `dateField` — Order Date / Discharge /
+    // Requested Delivery / DOS Submitted. Orders missing that date drop out
+    // of the range filter; this matches the form-entered "blank" semantics.
     const { from, to } = fields.dateRange;
     list = list.filter((o) => {
-      const ymd = o.createdAt.slice(0, 10);
+      const iso = pickDateForField(o, fields.dateField);
+      if (!iso) return false;
+      const ymd = iso.slice(0, 10);
       return ymd >= from && ymd <= to;
     });
   }
@@ -845,37 +885,118 @@ function formatDc(iso: string | null): { dateLabel: string; urgency: DcUrgency }
   return { dateLabel, urgency };
 }
 
+// Full tabular export of every field we collect, exploded by driver: an order
+// whose items are split across two drivers produces two rows — order metadata
+// duplicated, the Driver / Items / Completed Date columns scoped to just that
+// driver's slice. An order with no driver-assigned items emits a single row
+// with empty driver columns. Designed for spreadsheet reporting / payroll.
 function exportCsv(rows: OrderShape[]): void {
-  // Column order mirrors the on-screen table: identity → patient → facility →
-  // dates → people. Extra columns (Auth, Order/Delivery status, Companies,
-  // Items) tail after the visible ones for spreadsheet workflows.
   const header = [
-    "Order #", "Type", "Patient", "Facility", "Order Date", "Scheduled Discharge Date",
-    "CSR", "Driver(s)",
+    // identity
+    "Order #", "Order Type", "Linked Order #",
+    // patient
+    "Patient First", "Patient Last",
+    // facility
+    "Facility Name", "Facility Address", "Facility City", "Facility State",
+    "Facility Zip", "Facility Phone", "Facility Contact",
+    // ownership
+    "CSR", "Handler",
+    // scheduling dates
+    "Order Date", "Call Received Date", "Scheduled Discharge Date",
+    "Requested Delivery Date", "DOS Submitted",
+    // lifecycle stamps
+    "Printed At", "Acknowledged At", "Out for Delivery At",
+    "Door Tagged At", "Cancelled At", "Cancellation Reason",
+    // insurance
+    "Primary Insurance", "Secondary Insurance",
+    "Deductible Status", "Coinsurance %", "Deductible Amount",
+    // verification / auth
     "Authorization Status", "Pending Document Actions",
-    "Order Status", "Delivery Status",
-    "Companies", "Items",
+    "Order Status", "Delivery Status", "Eldercare",
+    // companies + notes
+    "Fulfillment Companies", "Notes",
+    // per-driver slice
+    "Driver", "Items", "Item Quantities",
+    "Item HCPCS Codes", "Completed Dates",
+    // bookkeeping
+    "Created At", "Updated At",
   ];
-  const data = rows.map((o) => [
-    o.orderNumber,
-    WORK_ORDER_TYPE_LABELS[o.workOrderType],
-    o.patientDisplay,
-    o.facilityName ?? "",
-    new Date(o.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" }),
-    o.dischargeDate ? new Date(o.dischargeDate).toLocaleDateString("en-US", { timeZone: "UTC" }) : "",
-    o.csrName ?? "",
-    // Per-item driver names, deduped — joined as "; " so Excel sees one cell.
-    Array.from(new Set(o.items.map((it) => it.driverName).filter((n): n is string => !!n))).join("; "),
-    AUTH_LABELS[o.authStatus],
-    o.pendingDocuments
-      .map((k) => PENDING_DOCUMENT_OPTIONS.find((d) => d.key === k)?.label ?? k)
-      .join("; "),
-    o.verificationStatus ? VERIFICATION_STATUS_LABELS[o.verificationStatus] : "",
-    STATUS_LABELS[o.status],
-    o.fulfillmentCompanies.join("; "),
-    o.items.map((it) => `${it.abbreviation || it.name}${it.quantity > 1 ? ` x${it.quantity}` : ""}`).join("; "),
-  ]);
+
+  const data: string[][] = [];
+  for (const o of rows) {
+    // Group items by driverId (`__unassigned` for items with no driver).
+    const groups = new Map<string, OrderShape["items"]>();
+    for (const it of o.items) {
+      const key = it.driverId == null ? "__unassigned" : String(it.driverId);
+      const arr = groups.get(key) ?? [];
+      arr.push(it);
+      groups.set(key, arr);
+    }
+    // No items at all → still emit one row so the order doesn't vanish.
+    const groupEntries = groups.size === 0
+      ? [["__unassigned", [] as OrderShape["items"]] as const]
+      : Array.from(groups.entries());
+
+    for (const [, items] of groupEntries) {
+      const driverName = items.find((it) => it.driverName)?.driverName ?? "";
+      data.push([
+        o.orderNumber,
+        WORK_ORDER_TYPE_LABELS[o.workOrderType],
+        o.linkedOrderNumber ?? "",
+        o.patientFirst,
+        o.patientLast,
+        o.facilityName ?? "",
+        o.facilityAddress ?? "",
+        o.facilityCity ?? "",
+        o.facilityState ?? "",
+        o.facilityZip ?? "",
+        o.facilityPhone ?? "",
+        o.facilityContact ?? "",
+        o.csrName ?? "",
+        o.handler ?? "",
+        fmtDate(o.createdAt),
+        fmtDate(o.callReceivedDate),
+        fmtDate(o.dischargeDate),
+        fmtDate(o.requestedDeliveryDate),
+        fmtDate(o.dosSubmitted),
+        fmtDate(o.printedAt),
+        fmtDate(o.acknowledgedAt),
+        fmtDate(o.outForDeliveryAt),
+        fmtDate(o.doorTaggedAt),
+        fmtDate(o.cancelledAt),
+        o.cancellationReason ?? "",
+        o.primaryInsuranceKey ?? "",
+        o.secondaryInsuranceKey ?? "",
+        o.deductibleStatus ?? "",
+        o.coinsurancePct != null ? String(o.coinsurancePct) : "",
+        o.deductibleAmount != null ? String(o.deductibleAmount) : "",
+        AUTH_LABELS[o.authStatus],
+        o.pendingDocuments
+          .map((k) => PENDING_DOCUMENT_OPTIONS.find((d) => d.key === k)?.label ?? k)
+          .join("; "),
+        o.verificationStatus ? VERIFICATION_STATUS_LABELS[o.verificationStatus] : "",
+        STATUS_LABELS[o.status],
+        o.eldercare ? "Yes" : "No",
+        o.fulfillmentCompanies.join("; "),
+        o.notes ?? "",
+        driverName,
+        items.map((it) => it.name).join("; "),
+        items.map((it) => String(it.quantity)).join("; "),
+        items.map((it) => it.hcpcsCode ?? "").join("; "),
+        items.map((it) => fmtDate(it.completedAt)).join("; "),
+        fmtDate(o.createdAt),
+        fmtDate(o.updatedAt),
+      ]);
+    }
+  }
   downloadCsv(`tracker-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...data]);
+}
+
+// Render any ISO timestamp as a UTC calendar date so the spreadsheet matches
+// what the user typed and what the on-screen columns show. Empty input → "".
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-US", { timeZone: "UTC" });
 }
 
 function computeDcBlocker(
