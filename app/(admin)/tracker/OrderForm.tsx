@@ -91,7 +91,6 @@ export default function OrderForm(props: Props) {
   const [verificationStatus, setVerificationStatus] = useState<OrderShape["verificationStatus"]>(initial?.verificationStatus ?? null);
 
   const [companies, setCompanies] = useState<string[]>(initial?.fulfillmentCompanies ?? []);
-  const [handler, setHandler] = useState<OrderShape["handler"]>(initial?.handler ?? null);
   const [dischargeDate, setDischargeDate] = useState(initial?.dischargeDate?.slice(0, 10) ?? "");
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState(
     initial?.requestedDeliveryDate?.slice(0, 10) ?? "",
@@ -173,7 +172,6 @@ export default function OrderForm(props: Props) {
           dosSubmitted: dosSubmitted || null,
           // Fulfillment & dispatch (Stage 3) — optional at create.
           fulfillmentCompanies: companies,
-          handler,
           status,
           cancellationReason: statusReason || null,
           // Per-item driver + completedAt replace the old order-level fields.
@@ -229,7 +227,6 @@ export default function OrderForm(props: Props) {
           verificationStatus,
           dosSubmitted: dosSubmitted || null,
           fulfillmentCompanies: companies,
-          handler,
           dischargeDate: dischargeDate || null,
           requestedDeliveryDate: requestedDeliveryDate || null,
           // Per-item driver + completedAt (no more order-level dispatcherId / deliveredAt).
@@ -680,6 +677,7 @@ export default function OrderForm(props: Props) {
                 <div>
                   <SearchSelect
                     label="Authorization Status"
+                    required={workOrderType === "DELIVERY"}
                     value={authStatus}
                     onChange={(v) => setAuthStatus((v ?? "NOT_REQ") as AuthStatus)}
                     placeholder="Search…"
@@ -766,21 +764,10 @@ export default function OrderForm(props: Props) {
                 />
               )}
 
-              {/* Handler is one of three Internal/Rep/Facility — constrain to
-                  1/3 width so it matches every other single-pick dropdown. */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
-                <SearchSelect
-                  label="Handler"
-                  value={handler}
-                  onChange={(v) => setHandler(v as OrderShape["handler"])}
-                  placeholder="Search…"
-                  options={[
-                    { value: "INTERNAL", label: "Internal" },
-                    { value: "REP",      label: "Rep" },
-                    { value: "FACILITY", label: "Facility" },
-                  ]}
-                />
-              </div>
+              {/* Handler field removed (Brent 2026-06 follow-up) — the
+                  internal/rep/facility distinction wasn't being used in
+                  practice. DB column stays for legacy reads; UI no longer
+                  reads or writes it. */}
 
               <SubHeader label="3 · Schedule" />
               {/* Stage 1 dates mirrored read-only, three across so each takes

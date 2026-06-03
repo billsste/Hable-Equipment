@@ -414,83 +414,103 @@ export function ChipMulti({
 
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
-      {value.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {value.map((k) => {
-            const opt = options.find((o) => o.key === k);
-            const label = opt?.label ?? k;
-            return (
-              <span
-                key={k}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  background: "rgba(83,58,253,0.08)",
-                  color: "#4434d4",
-                  border: "1px solid rgba(83,58,253,0.20)",
-                  borderRadius: 4,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  height: 26,
-                  paddingLeft: 8,
-                }}
-              >
-                <span>{label}</span>
-                <button
-                  type="button"
-                  onClick={() => onToggle(k)}
-                  title="Remove"
-                  style={{
-                    marginLeft: 2,
-                    marginRight: 2,
-                    width: 22,
-                    height: 22,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#94a3b8",
-                    borderRadius: 3,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "#4434d4";
-                    e.currentTarget.style.background = "rgba(83,58,253,0.10)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = "#94a3b8";
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <X size={12} />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      )}
-      <input
-        ref={inputRef}
-        type="text"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-          setHighlight(0);
-        }}
-        onFocus={() => setOpen(true)}
-        // Clicking an already-focused input doesn't re-fire onFocus, so the
-        // popover wouldn't reopen after the first add. Mirror onFocus here so
-        // every click reopens reliably.
-        onClick={() => setOpen(true)}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder ?? "Search to add…"}
-        className="w-full px-3 py-2 text-[13px] outline-none"
+      {/* Chips + text input share one bordered control so adding a chip
+          doesn't push the input down to a second row — the field's visual
+          height matches the single-select dropdowns next to it. */}
+      <div
+        onClick={() => { inputRef.current?.focus(); setOpen(true); }}
         style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 6px",
+          minHeight: 38,
           border: "1px solid #e5edf5",
-          color: "#061b31",
           background: "#ffffff",
           borderRadius: 4,
+          cursor: "text",
         }}
-      />
+      >
+        {value.map((k) => {
+          const opt = options.find((o) => o.key === k);
+          const label = opt?.label ?? k;
+          return (
+            <span
+              key={k}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                background: "rgba(83,58,253,0.08)",
+                color: "#4434d4",
+                border: "1px solid rgba(83,58,253,0.20)",
+                borderRadius: 3,
+                fontSize: 12,
+                fontWeight: 500,
+                height: 24,
+                paddingLeft: 8,
+              }}
+            >
+              <span>{label}</span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onToggle(k); }}
+                title="Remove"
+                style={{
+                  marginLeft: 2,
+                  marginRight: 2,
+                  width: 18,
+                  height: 18,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#94a3b8",
+                  borderRadius: 3,
+                  background: "transparent",
+                  border: 0,
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#4434d4";
+                  e.currentTarget.style.background = "rgba(83,58,253,0.10)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#94a3b8";
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <X size={10} />
+              </button>
+            </span>
+          );
+        })}
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+            setHighlight(0);
+          }}
+          onFocus={() => setOpen(true)}
+          // Clicking an already-focused input doesn't re-fire onFocus, so the
+          // popover wouldn't reopen after the first add. Mirror onFocus here so
+          // every click reopens reliably.
+          onClick={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder={value.length === 0 ? (placeholder ?? "Search to add…") : ""}
+          className="text-[13px] outline-none"
+          style={{
+            flex: 1,
+            minWidth: 80,
+            padding: "4px 4px",
+            color: "#061b31",
+            background: "transparent",
+            border: 0,
+          }}
+        />
+      </div>
       {open && anchorRect && (
         <div
           ref={popoverRef}
