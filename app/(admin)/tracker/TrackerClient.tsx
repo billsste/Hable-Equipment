@@ -151,6 +151,9 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const [pendingDocFilter, setPendingDocFilter] = useState("");
   const [verificationFilter, setVerificationFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  // Door tag presence: "" = don't filter; "yes" = any item has ≥1 tag;
+  // "no" = every item has 0 tags. Driver tag-count column is per-item.
+  const [doorTagFilter, setDoorTagFilter] = useState<"" | "yes" | "no">("");
   const [editing, setEditing] = useState<OrderShape | null>(null);
   const [creating, setCreating] = useState(initialNew);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "orderDate", dir: "desc" });
@@ -179,14 +182,14 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       sortOrders(
         filterOrders(
           orders, view, search,
-          { authFilter, pendingDocFilter, verificationFilter, statusFilter, dateRange, dateField: dateFieldFilter },
+          { authFilter, pendingDocFilter, verificationFilter, statusFilter, doorTagFilter, dateRange, dateField: dateFieldFilter },
         ),
         sort,
       ),
-    [orders, view, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, dateRange, dateFieldFilter, sort],
+    [orders, view, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, doorTagFilter, dateRange, dateFieldFilter, sort],
   );
   const hasFieldFilter =
-    authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || datePreset !== "all";
+    authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || doorTagFilter !== "" || datePreset !== "all";
   const counts = useMemo(() => {
     const m: Record<ViewKey, number> = {
       all: orders.length,
@@ -251,6 +254,8 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             }
             if (verificationFilter) chips.push(`Order Status ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
             if (statusFilter) chips.push(`Delivery ${STATUS_LABELS[statusFilter as OutcomeStatus]}`);
+            if (doorTagFilter === "yes") chips.push("Door Tags: any");
+            else if (doorTagFilter === "no") chips.push("Door Tags: none");
             if (search.trim()) chips.push(`Search “${search.trim()}”`);
             chips.push(`Printed ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`);
             return (
@@ -375,6 +380,9 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
         // Delivery status
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
+        // Door tags (presence)
+        doorTagFilter={doorTagFilter}
+        onDoorTagFilterChange={setDoorTagFilter}
         // Date
         dateFieldFilter={dateFieldFilter}
         onDateFieldFilterChange={setDateFieldFilter}
@@ -390,6 +398,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           setPendingDocFilter("");
           setVerificationFilter("");
           setStatusFilter("");
+          setDoorTagFilter("");
           setDatePreset("all");
           setDateFrom("");
           setDateTo("");
@@ -650,7 +659,7 @@ const FilterSelect = Combobox;
 // Inactive filters live behind the "+ Filter" menu; once added, the pill
 // stays in place even after the user clears it (via X) only because the
 // user explicitly removed it — adding it back is one click away.
-type FilterDim = "auth" | "pendingDoc" | "verification" | "status" | "date";
+type FilterDim = "auth" | "pendingDoc" | "verification" | "status" | "doorTag" | "date";
 // Full field labels — these match the form's column names verbatim so the
 // filter bar reads like "the field you're filtering on", not a shorthand.
 // Date uses a dynamic label (the picked date column) — handled inline.
@@ -659,6 +668,7 @@ const FILTER_DIM_LABEL: Record<FilterDim, string> = {
   pendingDoc: "Pending Document Actions",
   verification: "Order Status",
   status: "Delivery Status",
+  doorTag: "Door Tags",
   date: "Date",
 };
 
@@ -668,6 +678,7 @@ function FilterBar({
   pendingDocFilter, onPendingDocFilterChange,
   verificationFilter, onVerificationFilterChange,
   statusFilter, onStatusFilterChange,
+  doorTagFilter, onDoorTagFilterChange,
   dateFieldFilter, onDateFieldFilterChange,
   datePreset, onDatePresetChange,
   dateFrom, onDateFromChange,
@@ -680,6 +691,7 @@ function FilterBar({
   pendingDocFilter: string; onPendingDocFilterChange: (v: string) => void;
   verificationFilter: string; onVerificationFilterChange: (v: string) => void;
   statusFilter: string; onStatusFilterChange: (v: string) => void;
+  doorTagFilter: "" | "yes" | "no"; onDoorTagFilterChange: (v: "" | "yes" | "no") => void;
   dateFieldFilter: DateField; onDateFieldFilterChange: (v: DateField) => void;
   datePreset: DatePreset; onDatePresetChange: (v: DatePreset) => void;
   dateFrom: string; onDateFromChange: (v: string) => void;
@@ -697,6 +709,7 @@ function FilterBar({
     if (pendingDocFilter) init.add("pendingDoc");
     if (verificationFilter) init.add("verification");
     if (statusFilter) init.add("status");
+    if (doorTagFilter) init.add("doorTag");
     if (datePreset !== "all") init.add("date");
     return init;
   });
@@ -725,6 +738,7 @@ function FilterBar({
     else if (dim === "pendingDoc") onPendingDocFilterChange("");
     else if (dim === "verification") onVerificationFilterChange("");
     else if (dim === "status") onStatusFilterChange("");
+    else if (dim === "doorTag") onDoorTagFilterChange("");
     else if (dim === "date") {
       onDatePresetChange("all");
       onDateFromChange("");
@@ -794,6 +808,25 @@ function FilterBar({
               value: k,
               label: STATUS_LABELS[k],
             })))}
+          />
+        </FilterChip>
+      )}
+      {expanded.has("doorTag") && (
+        // Door Tags is a presence filter (Yes = ≥1 item has a tag,
+        // No = every item has zero). Width tight since it's only 2 values.
+        <FilterChip
+          label={FILTER_DIM_LABEL.doorTag}
+          onRemove={() => removeDim("doorTag")}
+        >
+          <FilterSelect
+            value={doorTagFilter}
+            onChange={(v) => onDoorTagFilterChange((v || "") as "" | "yes" | "no")}
+            placeholder="Any"
+            options={[
+              { value: "yes", label: "Yes (≥1 tag)" },
+              { value: "no", label: "No tags" },
+            ]}
+            width={150}
           />
         </FilterChip>
       )}
@@ -997,6 +1030,7 @@ function filterOrders(
   fields: {
     authFilter: string; pendingDocFilter: string;
     verificationFilter: string; statusFilter: string;
+    doorTagFilter: "" | "yes" | "no";
     dateRange: { from: string; to: string } | null;
     dateField: DateField;
   },
@@ -1017,6 +1051,11 @@ function filterOrders(
   }
   if (fields.statusFilter) {
     list = list.filter((o) => o.status === fields.statusFilter);
+  }
+  if (fields.doorTagFilter === "yes") {
+    list = list.filter((o) => o.items.some((it) => (it.doorTagCount ?? 0) > 0));
+  } else if (fields.doorTagFilter === "no") {
+    list = list.filter((o) => o.items.every((it) => (it.doorTagCount ?? 0) === 0));
   }
   if (fields.dateRange) {
     // Compare the YYYY-MM-DD slice in UTC so the inclusive boundary matches
