@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, getSession } from "@/lib/auth";
-import { equipStore, UserRole } from "@/lib/equip-store";
+import { db } from "@/lib/db";
+import { UserRole } from "@/lib/equip-store";
 import AdminSidebar from "@/components/admin-sidebar";
 
 export default async function AdminLayout({
@@ -17,8 +18,17 @@ export default async function AdminLayout({
   const session = getSession(sessionId);
   if (!session) redirect("/login");
 
-  const user = await equipStore.getUser(session.userId);
-  if (!user) redirect("/login");
+  // Pull mustChangePassword alongside the basic identity so we can gate every
+  // (admin) route through the forced-password-change flow in one place.
+  const user = await db.user.findUnique({
+    where: { id: session.userId },
+    select: { id: true, name: true, email: true, role: true, active: true, mustChangePassword: true },
+  });
+  if (!user || !user.active) redirect("/login");
+
+  // Forced first-login password change. /change-password lives outside this
+  // layout so this redirect doesn't loop.
+  if (user.mustChangePassword) redirect("/change-password");
 
   const safeUser = { id: user.id, name: user.name, email: user.email, role: user.role as UserRole };
 

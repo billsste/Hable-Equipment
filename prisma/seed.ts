@@ -19,7 +19,14 @@ if (!connectionString) throw new Error("DATABASE_URL is required to seed.");
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
-const MULTI_ROLE_OVERLAPS = new Set(["Gabe", "Rodney", "Paul", "Brent"]);
+// Names that appear in BOTH CSRS and DISPATCHERS — they get role:"csr" but
+// roles[]:["csr", "driver"] so they show up in both pickers. Matches the
+// 2026-06 Action Medical staff list.
+const MULTI_ROLE_OVERLAPS = new Set(["Brent Hable", "Gabe Green", "Rodney Guyton"]);
+
+// Default password every newly-provisioned user gets. Forced change on first
+// login is enforced by User.mustChangePassword + the (admin) layout redirect.
+const DEFAULT_PASSWORD = "Equip2026!";
 
 async function main() {
   console.log("Seeding EquipDispatch (revamp)...");
@@ -57,6 +64,9 @@ async function main() {
   });
 
   // ── CSR users ──
+  // `mustChangePassword: true` only on CREATE — existing users keep whatever
+  // they've already chosen. Pre-flagged accounts that have logged in once
+  // already are not reflagged.
   for (const u of CSRS) {
     const isOverlap = MULTI_ROLE_OVERLAPS.has(u.name);
     await db.user.upsert({
@@ -65,16 +75,17 @@ async function main() {
       create: {
         name: u.name,
         email: u.email,
-        password: "Equip2026!",
+        password: DEFAULT_PASSWORD,
         role: "csr",
         roles: isOverlap ? ["csr", "driver"] : ["csr"],
         active: true,
+        mustChangePassword: true,
       },
     });
   }
   console.log(`Seeded ${CSRS.length} CSRs`);
 
-  // ── Driver users (formerly dispatchers; renamed per Brent 2026-06 commit B).
+  // ── Driver users ── Multi-role overlaps already seeded as CSRs above.
   for (const u of DISPATCHERS) {
     if (MULTI_ROLE_OVERLAPS.has(u.name)) continue;
     await db.user.upsert({
@@ -83,14 +94,15 @@ async function main() {
       create: {
         name: u.name,
         email: u.email,
-        password: "Equip2026!",
+        password: DEFAULT_PASSWORD,
         role: "driver",
         roles: ["driver"],
         active: true,
+        mustChangePassword: true,
       },
     });
   }
-  console.log(`Seeded ${DISPATCHERS.length} drivers`);
+  console.log(`Seeded ${DISPATCHERS.length - MULTI_ROLE_OVERLAPS.size} driver-only users (+ ${MULTI_ROLE_OVERLAPS.size} multi-role)`);
 
   // ── Facilities (63+) ──
   // Preserve existing facility IDs by name, then add anything missing.

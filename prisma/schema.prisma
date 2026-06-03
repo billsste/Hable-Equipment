@@ -24,6 +24,10 @@ model User {
   mfaSecret       String?
   mfaBackupCodes  String[]  @default([])
   mfaEnrolledAt   DateTime?
+  // Set true when an admin provisions or resets an account with a shared
+  // default password — the (admin) layout redirects to /change-password
+  // until the user picks their own. Cleared on successful change.
+  mustChangePassword Boolean @default(false)
   createdTickets  Ticket[]  @relation("CreatedBy")
   assignedTickets Ticket[]  @relation("AssignedTo")
   csrOrders       Order[]   @relation("OrderCsr")

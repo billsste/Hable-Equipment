@@ -69,34 +69,37 @@ export const FACILITIES_63: string[] = [
   "Tendercare Westwood",
 ];
 
-// CSR users — see memory file. 11 names per client list (Tim Dodge → "Tim").
+// Action Medical staff (2026-06 client list). Replaces the earlier demo
+// users. Emails are the real @actionmedicalequip.com addresses; full names
+// are stored so the picker shows "Brent Hable" not just "Brent".
+//
+// CSRs do intake + verification. Drivers do fulfillment. A few people are
+// flagged in MULTI_ROLE_OVERLAPS (below in seed.ts) and live in both lists.
 export const CSRS: { name: string; email: string }[] = [
-  { name: "Melissa", email: "melissa@equipdispatch.com" },
-  { name: "Danisha", email: "danisha@equipdispatch.com" },
-  { name: "Dawn", email: "dawn@equipdispatch.com" },
-  { name: "Eiva", email: "eiva@equipdispatch.com" },
-  { name: "Brent", email: "brent@equipdispatch.com" },
-  { name: "Gabe", email: "gabe@equipdispatch.com" },
-  { name: "Rodney", email: "rodney@equipdispatch.com" },
-  { name: "Lorne", email: "lorne@equipdispatch.com" },
-  { name: "Tim", email: "tim@equipdispatch.com" },
-  { name: "Shane", email: "shane@equipdispatch.com" },
-  { name: "Paul", email: "paul@equipdispatch.com" },
+  { name: "Danisha King",          email: "dking@actionmedicalequip.com" },
+  { name: "Dawn Fleeson",          email: "dfleeson@actionmedicalequip.com" },
+  { name: "Keshawn Hunt",          email: "keshawn@actionmedicalequip.com" },
+  { name: "Lorne Green",           email: "lgreen@actionmedicalequip.com" },
+  { name: "Melissa Songalewski",   email: "msongalewski@actionmedicalequip.com" },
+  { name: "Shane Loch",            email: "sloch@actionmedicalequip.com" },
+  { name: "Tyler Fleeson",         email: "tfleeson@actionmedicalequip.com" },
+  // Multi-role (also drivers):
+  { name: "Brent Hable",           email: "bhable@actionmedicalequip.com" },
+  { name: "Gabe Green",            email: "ggreen@actionmedicalequip.com" },
+  { name: "Rodney Guyton",         email: "rguyton@actionmedicalequip.com" },
 ];
 
-// Dispatcher users — 13 real people per memory (CLOSET / CANCELLED / MISC dropped).
+// Driver users (formerly dispatchers). Folded into one team per Brent's 2026-06 spec.
 export const DISPATCHERS: { name: string; email: string }[] = [
-  { name: "Nic", email: "nic@equipdispatch.com" },
-  { name: "Bob", email: "bob@equipdispatch.com" },
-  { name: "Sunshine", email: "sunshine@equipdispatch.com" },
-  { name: "Brandon", email: "brandon@equipdispatch.com" },
-  { name: "Shan", email: "shan@equipdispatch.com" },
-  { name: "Terrell", email: "terrell@equipdispatch.com" },
-  { name: "Austin", email: "austin@equipdispatch.com" },
-  { name: "Shawn", email: "shawn@equipdispatch.com" },
-  { name: "Rob", email: "rob@equipdispatch.com" },
+  { name: "Bob Frauce",            email: "bob@actionmedicalequip.com" },
+  { name: "Brandon Williams",      email: "brandon@actionmedicalequip.com" },
+  { name: "Robert Vadnais",        email: "rvadnais@actionmedicalequip.com" },
+  { name: "Terrell Cooks",         email: "tcooks@actionmedicalequip.com" },
+  // Multi-role (also CSRs):
+  { name: "Brent Hable",           email: "bhable@actionmedicalequip.com" },
+  { name: "Gabe Green",            email: "ggreen@actionmedicalequip.com" },
+  { name: "Rodney Guyton",         email: "rguyton@actionmedicalequip.com" },
 ];
-// Multi-role overlaps (per memory): Gabe, Rodney, Paul, Brent are also dispatchers.
 
 export const WHATS_NEEDED: { key: string; label: string; color: string; sortOrder: number }[] = [
   { key: "DX",        label: "Diagnosis Code",   color: "#dc2626", sortOrder: 1 },
