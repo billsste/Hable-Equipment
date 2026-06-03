@@ -61,6 +61,9 @@ export type OrderShape = {
     driverId: number | null;
     driverName: string | null;
     completedAt: string | null;
+    // Per-item door-tag attempts. Increments when a driver leaves a tag for
+    // this specific line; resets to 0 on Stage 1 equipment changes.
+    doorTagCount: number;
   }>;
   history: Array<{
     id: string;
@@ -279,7 +282,10 @@ export const DELIVERY_STATUS_PICKER_VALUES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE",            // TBD
   "ON_HOLD",
   "OUT_FOR_DELIVERY",
-  "DOOR_TAG",
+  // DOOR_TAG removed from the manual picker — door tags are now tracked
+  // per-item in Stage 3 (OrderItem.doorTagCount). Existing rows that already
+  // have status = DOOR_TAG still render via the "include current value"
+  // logic in the picker call sites.
   "CANCELLED",
   "DELIVERED",
 ];

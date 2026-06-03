@@ -917,7 +917,7 @@ function exportCsv(rows: OrderShape[]): void {
     "Fulfillment Companies", "Notes",
     // per-item slice — one row per item
     "Driver", "Item", "Quantity", "Category", "Abbreviation",
-    "HCPCS Code", "Completed Date",
+    "HCPCS Code", "Completed Date", "Door Tags",
     // bookkeeping
     "Created At", "Updated At",
   ];
@@ -969,7 +969,7 @@ function exportCsv(rows: OrderShape[]): void {
     const trailingColumns: string[] = [fmtDate(o.createdAt), fmtDate(o.updatedAt)];
 
     if (o.items.length === 0) {
-      data.push([...orderColumns, "", "", "", "", "", "", "", ...trailingColumns]);
+      data.push([...orderColumns, "", "", "", "", "", "", "", "", ...trailingColumns]);
       continue;
     }
     for (const it of o.items) {
@@ -982,6 +982,7 @@ function exportCsv(rows: OrderShape[]): void {
         it.abbreviation ?? "",
         it.hcpcsCode ?? "",
         fmtDate(it.completedAt),
+        String(it.doorTagCount ?? 0),
         ...trailingColumns,
       ]);
     }

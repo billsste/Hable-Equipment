@@ -432,13 +432,14 @@ export async function PATCH(
   }
 
   let itemsChanged = false;
-  let newItemRows: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: Date | null }> = [];
+  let newItemRows: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: Date | null; doorTagCount: number }> = [];
   if ("items" in body && Array.isArray(body.items)) {
     newItemRows = (body.items as Array<{
       equipmentId?: unknown;
       quantity?: unknown;
       driverId?: unknown;
       completedAt?: unknown;
+      doorTagCount?: unknown;
     }>)
       .filter((it) => typeof it.equipmentId === "string" && (it.equipmentId as string).length > 0)
       .map((it) => ({
@@ -448,6 +449,9 @@ export async function PATCH(
         completedAt: typeof it.completedAt === "string" && it.completedAt
           ? new Date(it.completedAt + "T00:00:00.000Z")
           : null,
+        doorTagCount: typeof it.doorTagCount === "number" && it.doorTagCount >= 0
+          ? Math.floor(it.doorTagCount)
+          : 0,
       }));
 
     const itemDetail = await diffItems(existing.items, newItemRows);
@@ -504,6 +508,7 @@ export async function PATCH(
             quantity: it.quantity,
             driverId: it.driverId,
             completedAt: it.completedAt,
+            doorTagCount: it.doorTagCount,
           })),
         }),
       );

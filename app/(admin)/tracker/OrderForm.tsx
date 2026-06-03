@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Loader2, AlertTriangle, Send, CheckCircle2, DoorClosed, Plus, Printer, Truck } from "lucide-react";
+import { X, Loader2, AlertTriangle, Send, CheckCircle2, Plus, Printer, Truck } from "lucide-react";
 import {
   AUTH_LABELS,
   AUTH_PICKER_VALUES,
@@ -101,12 +101,13 @@ export default function OrderForm(props: Props) {
   // Items now carry per-row driver + completedAt (replaces the order-level
   // dispatcherId + deliveredAt fields). Drivers are independent per line so
   // one order can split across multiple drivers and dates.
-  const [items, setItems] = useState<Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string }>>(
+  const [items, setItems] = useState<Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string; doorTagCount: number }>>(
     initial?.items.map((it) => ({
       equipmentId: it.equipmentId,
       quantity: it.quantity,
       driverId: it.driverId ?? null,
       completedAt: it.completedAt?.slice(0, 10) ?? "",
+      doorTagCount: it.doorTagCount ?? 0,
     })) ?? [],
   );
   const [noteDraft, setNoteDraft] = useState("");
@@ -181,6 +182,7 @@ export default function OrderForm(props: Props) {
             quantity: it.quantity,
             driverId: it.driverId,
             completedAt: it.completedAt || null,
+            doorTagCount: it.doorTagCount,
           })),
           noteToAdd: noteDraft.trim() || null,
         }),
@@ -236,6 +238,7 @@ export default function OrderForm(props: Props) {
             quantity: it.quantity,
             driverId: it.driverId,
             completedAt: it.completedAt || null,
+            doorTagCount: it.doorTagCount,
           })),
           noteToAdd: noteDraft.trim() || null,
           status,
@@ -346,28 +349,10 @@ export default function OrderForm(props: Props) {
         />,
       );
     }
-    if (o.stage === "OUT_FOR_DELIVERY") {
-      buttons.push(
-        <ActionBtn
-          key="door-tag"
-          icon={<DoorClosed size={14} />}
-          label="Door Tag"
-          tone="ghost"
-          onClick={() => handleSave({ action: "door_tag" })}
-        />,
-      );
-    }
-    if (o.stage === "DOOR_TAG") {
-      buttons.push(
-        <ActionBtn
-          key="retry-out"
-          icon={<Truck size={14} />}
-          label="Retry Delivery"
-          tone="primary"
-          onClick={() => handleSave({ action: "out_for_delivery" })}
-        />,
-      );
-    }
+    // Brent 2026-06: Door Tag is no longer an order-level action button —
+    // it's tracked per item via the ± stepper in the Stage 3 driver table.
+    // Drivers update the count from the road; the order's overall status
+    // is whatever Delivery Status the CSR / driver picks separately.
     if (o.stage === "DELIVERED" && o.workOrderType === "DELIVERY") {
       buttons.push(
         <ActionBtn
@@ -596,7 +581,7 @@ export default function OrderForm(props: Props) {
                     equipment={lookups.equipment}
                     value={items}
                     onChange={setItems}
-                    defaults={{ driverId: null, completedAt: "" }}
+                    defaults={{ driverId: null, completedAt: "", doorTagCount: 0 }}
                   />
                 </div>
               </div>
@@ -1099,29 +1084,33 @@ function DispatcherLocked({ statusLabel }: { statusLabel: string }) {
 // Each row shows the equipment name + qty (read-only) and exposes a driver
 // dropdown + completed-date input. Driver list is shared with the rest of
 // the form via Lookups (legacy "dispatchers" key — Phase 3 renames it).
+// Per-item driver + completion + door-tag table for Stage 3. Door tags are
+// tracked per line (a delivery attempt that leaves a tag for one piece of
+// equipment doesn't necessarily apply to the other items on the same order,
+// especially when items are split across different drivers).
 function PerItemDrivers({
   items,
   equipmentLookup,
   driverLookup,
   onChange,
 }: {
-  items: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string }>;
+  items: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string; doorTagCount: number }>;
   equipmentLookup: Lookups["equipment"];
   driverLookup: Lookups["dispatchers"];
-  onChange: (items: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string }>) => void;
+  onChange: (items: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: string; doorTagCount: number }>) => void;
 }) {
-  function patch(idx: number, p: Partial<{ driverId: number | null; completedAt: string }>) {
+  function patch(idx: number, p: Partial<{ driverId: number | null; completedAt: string; doorTagCount: number }>) {
     onChange(items.map((it, i) => (i === idx ? { ...it, ...p } : it)));
   }
+  // Grid: Equipment | Driver | Completed | Door Tags. Used by header + each
+  // row so column boundaries always line up.
+  const gridCols = "minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) 110px";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {/* Brent 2026-06: explicit column header for the per-item assignment
-          table so the third column reads "Completed Date" (previously inferred
-          via aria-label only). Mirrors the grid template below. */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)",
+          gridTemplateColumns: gridCols,
           gap: 8,
           padding: "0 10px",
           fontSize: 11,
@@ -1134,6 +1123,7 @@ function PerItemDrivers({
         <span>Equipment</span>
         <span>Driver</span>
         <span>Completed Date</span>
+        <span>Door Tags</span>
       </div>
       {items.map((it, idx) => {
         const eq = equipmentLookup.find((e) => e.id === it.equipmentId);
@@ -1143,7 +1133,7 @@ function PerItemDrivers({
             key={it.equipmentId}
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)",
+              gridTemplateColumns: gridCols,
               gap: 8,
               padding: "8px 10px",
               background: "#f6f9fc",
@@ -1194,9 +1184,93 @@ function PerItemDrivers({
               }}
               aria-label="Completed date"
             />
+            <DoorTagStepper
+              value={it.doorTagCount}
+              onChange={(next) => patch(idx, { doorTagCount: next })}
+            />
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Touch-friendly ±/count stepper. Floors at 0; no upper cap (rare but
+// possible for an item to need multiple attempts). Clicking the count
+// itself focuses the buttons' parent — we don't surface a free-form
+// numeric input because mistyping a 4-digit count by accident is the
+// usual failure mode of those.
+function DoorTagStepper({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  function decrement() {
+    onChange(Math.max(0, value - 1));
+  }
+  function increment() {
+    onChange(value + 1);
+  }
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 0,
+        border: "1px solid #e5edf5",
+        borderRadius: 4,
+        background: "#fff",
+        overflow: "hidden",
+      }}
+      aria-label="Door tag count"
+    >
+      <button
+        type="button"
+        onClick={decrement}
+        disabled={value === 0}
+        title="Remove one door tag"
+        style={{
+          padding: "6px 10px",
+          fontSize: 14,
+          fontWeight: 600,
+          color: value === 0 ? "#cbd5e1" : "#64748d",
+          background: "transparent",
+          border: 0,
+          cursor: value === 0 ? "default" : "pointer",
+        }}
+      >
+        −
+      </button>
+      <span
+        style={{
+          minWidth: 28,
+          textAlign: "center",
+          fontSize: 13,
+          fontWeight: 500,
+          color: value > 0 ? "#9b6829" : "#273951",
+          fontFeatureSettings: '"tnum"',
+        }}
+      >
+        {value}
+      </span>
+      <button
+        type="button"
+        onClick={increment}
+        title="Record a door tag for this item"
+        style={{
+          padding: "6px 10px",
+          fontSize: 14,
+          fontWeight: 600,
+          color: "#64748d",
+          background: "transparent",
+          border: 0,
+          cursor: "pointer",
+        }}
+      >
+        +
+      </button>
     </div>
   );
 }

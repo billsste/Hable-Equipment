@@ -117,6 +117,7 @@ export async function POST(request: Request) {
         quantity?: unknown;
         driverId?: unknown;
         completedAt?: unknown;
+        doorTagCount?: unknown;
       }>)
         .filter((it) => typeof it.equipmentId === "string" && (it.equipmentId as string).length > 0)
         .map((it) => ({
@@ -126,6 +127,9 @@ export async function POST(request: Request) {
           completedAt: typeof it.completedAt === "string" && it.completedAt
             ? new Date(it.completedAt + "T00:00:00.000Z")
             : null,
+          doorTagCount: typeof it.doorTagCount === "number" && it.doorTagCount >= 0
+            ? Math.floor(it.doorTagCount)
+            : 0,
         }))
     : [];
 
@@ -330,6 +334,7 @@ export async function POST(request: Request) {
                   quantity: it.quantity,
                   driverId: it.driverId,
                   completedAt: it.completedAt,
+                  doorTagCount: it.doorTagCount,
                 })),
               },
             }
