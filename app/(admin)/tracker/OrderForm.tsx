@@ -524,32 +524,28 @@ export default function OrderForm(props: Props) {
                   the three scheduling dates share row 3; Equipment is the
                   only full-width control (picker has its own width). */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-                {isCreate && (
-                  <SearchSelect
-                    label="Work Order Type"
-                    value={workOrderType}
-                    onChange={(v) => setWorkOrderType((v as WorkOrderType) ?? "DELIVERY")}
-                    // Brent 2026-06: ELDERCARE + SERVICE_PICKUP no longer
-                    // selectable. ELDERCARE is replaced by the boolean
-                    // eldercare flag below; SERVICE_PICKUP folds into PICK_UP.
-                    options={sortByLabel((Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
-                      value: k,
-                      label: WORK_ORDER_TYPE_LABELS[k],
-                    })))}
-                  />
-                )}
-                {isCreate && (
-                  <SearchSelect
-                    label="Eldercare"
-                    value={eldercare ? "YES" : "NO"}
-                    onChange={(v) => setEldercare(v === "YES")}
-                    placeholder="Search…"
-                    options={[
-                      { value: "NO",  label: "No" },
-                      { value: "YES", label: "Yes" },
-                    ]}
-                  />
-                )}
+                <SearchSelect
+                  label="Work Order Type"
+                  value={workOrderType}
+                  onChange={(v) => setWorkOrderType((v as WorkOrderType) ?? "DELIVERY")}
+                  // Brent 2026-06: ELDERCARE + SERVICE_PICKUP no longer
+                  // selectable. ELDERCARE is replaced by the boolean
+                  // eldercare flag below; SERVICE_PICKUP folds into PICK_UP.
+                  options={sortByLabel((Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
+                    value: k,
+                    label: WORK_ORDER_TYPE_LABELS[k],
+                  })))}
+                />
+                <SearchSelect
+                  label="Eldercare"
+                  value={eldercare ? "YES" : "NO"}
+                  onChange={(v) => setEldercare(v === "YES")}
+                  placeholder="Search…"
+                  options={[
+                    { value: "NO",  label: "No" },
+                    { value: "YES", label: "Yes" },
+                  ]}
+                />
                 <UserSelect
                   label="CSR"
                   value={csrId}
