@@ -219,6 +219,12 @@ export const AUTH_NEXT: Record<AuthStatus, ReadonlyArray<AuthStatus>> = {
 
 export function isValidAuthTransition(from: AuthStatus, to: AuthStatus): boolean {
   if (from === to) return true;
+  // Brent 2026-06: the picker now only surfaces the 4 statuses in
+  // AUTH_PICKER_VALUES, and the workflow lets the CSR jump between them
+  // freely (NOT_REQ ↔ READY_TO_SUBMIT ↔ PENDING_DOCUMENTS ↔ SUBMITTED).
+  // Legacy values still respect AUTH_NEXT so partially-migrated rows
+  // can't drift back into deprecated states by accident.
+  if (AUTH_PICKER_VALUES.includes(from) && AUTH_PICKER_VALUES.includes(to)) return true;
   return AUTH_NEXT[from].includes(to);
 }
 
