@@ -37,7 +37,6 @@ import {
   FacilitySelect,
   InsuranceSelect,
   SearchSelect,
-  SegmentedSelect,
   UserSelect,
 } from "./order-form-selects";
 import { EquipmentPicker } from "./order-form-equipment";
@@ -528,10 +527,11 @@ export default function OrderForm(props: Props) {
                       label: WORK_ORDER_TYPE_LABELS[k],
                     })))}
                   />
-                  <SegmentedSelect
+                  <SearchSelect
                     label="Eldercare"
                     value={eldercare ? "YES" : "NO"}
                     onChange={(v) => setEldercare(v === "YES")}
+                    placeholder="Search…"
                     options={[
                       { value: "NO",  label: "No" },
                       { value: "YES", label: "Yes" },
@@ -633,10 +633,11 @@ export default function OrderForm(props: Props) {
                   and Deductible Amount are only meaningful once "Met / Not Met"
                   is established, so they read more naturally below the toggle. */}
               <div style={{ marginTop: 12 }}>
-                <SegmentedSelect
+                <SearchSelect
                   label="Deductible Met?"
                   value={deductible}
                   onChange={(v) => setDeductible(v as "MET" | "NOT_MET" | "NA" | null)}
+                  placeholder="Search…"
                   options={[
                     { value: "MET", label: "Met" },
                     { value: "NOT_MET", label: "Not Met" },
@@ -733,10 +734,11 @@ export default function OrderForm(props: Props) {
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <SegmentedSelect
+                <SearchSelect
                   label="Order Status"
                   value={verificationStatus}
                   onChange={(v) => setVerificationStatus((v as VerificationStatus | null) ?? null)}
+                  placeholder="Search…"
                   options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
                     value: k,
                     label: VERIFICATION_STATUS_LABELS[k],
@@ -780,10 +782,11 @@ export default function OrderForm(props: Props) {
               )}
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
-                <SegmentedSelect
+                <SearchSelect
                   label="Handler"
                   value={handler}
                   onChange={(v) => setHandler(v as OrderShape["handler"])}
+                  placeholder="Search…"
                   options={[
                     { value: "INTERNAL", label: "Internal" },
                     { value: "REP",      label: "Rep" },

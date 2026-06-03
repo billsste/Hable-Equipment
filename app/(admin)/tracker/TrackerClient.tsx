@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  AUTH_IN_FLIGHT,
   AUTH_LABELS,
   AUTH_PICKER_VALUES,
   DELIVERY_STATUS_PICKER_VALUES,
@@ -61,19 +60,21 @@ type Props = {
   lookups: Lookups;
 };
 
-type ViewKey = "all" | "open" | "out" | "auth" | "delivered";
-type SortKey = "orderNumber" | "patient" | "facility" | "csr" | "driver" | "orderDate";
+type ViewKey = "all" | "open" | "out" | "delivered";
+type SortKey = "orderNumber" | "orderType" | "patient" | "facility" | "csr" | "driver" | "orderDate";
 type SortDir = "asc" | "desc";
 
+// Tabs key off Delivery Status — the only manual lifecycle field. Anything
+// finer-grained (Auth, Pending Docs, Order Status) is reachable via the
+// dropdown filters below.
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
   { key: "open",      label: "Open",             description: "Anything not yet wrapped up" },
-  { key: "auth",      label: "Auth Follow-Ups",  description: "Pending insurance authorization" },
   { key: "out",       label: "Out for Delivery", description: "Driver en route" },
   { key: "delivered", label: "Delivered",        description: "Closed loop" },
   { key: "all",       label: "All",              description: "Every order" },
 ];
 
-const VALID_VIEWS = new Set<ViewKey>(["all", "open", "out", "auth", "delivered"]);
+const VALID_VIEWS = new Set<ViewKey>(["all", "open", "out", "delivered"]);
 
 // Order Date presets shown next to the date inputs. The "no filter" state is
 // represented by `datePreset === "all"` (the value FilterSelect uses for its
@@ -166,14 +167,11 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const counts = useMemo(() => {
     const m: Record<ViewKey, number> = {
       all: orders.length,
-      open: 0, out: 0, auth: 0, delivered: 0,
+      open: 0, out: 0, delivered: 0,
     };
-    // Brent 2026-06: counters key off the manual Delivery Status (`status`)
-    // instead of the derived `stage`, matching the user-visible filter set.
     for (const o of orders) {
       if (!isTerminalStatus(o.status)) m.open++;
       if (o.status === "OUT_FOR_DELIVERY") m.out++;
-      if (AUTH_IN_FLIGHT.includes(o.authStatus)) m.auth++;
       if (o.status === "DELIVERED") m.delivered++;
     }
     return m;
@@ -457,21 +455,22 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
         </div>
         <div className="hidden md:block" style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
-            {/* Brent 2026-06: Stage column removed — derived lifecycle was
-                duplicative once "Order Status" and "Delivery Status" became
-                manual fields. Work-order-type pill moved into the Order # cell
-                so the row still shows non-DELIVERY types at a glance. */}
+            {/* Order Type is its own column (Brent 2026-06 request) — the pill
+                used to ride under the Order # but reads cleaner alongside the
+                other categorical fields. */}
             <colgroup>
-              <col style={{ width: 150 }} />
-              <col style={{ width: "24%" }} />
-              <col style={{ width: "24%" }} />
               <col style={{ width: 130 }} />
-              <col style={{ width: "16%" }} />
-              <col style={{ width: "16%" }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: "22%" }} />
+              <col style={{ width: "22%" }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "14%" }} />
             </colgroup>
             <thead>
               <tr style={{ background: "#f6f9fc", borderBottom: "1px solid #e5edf5" }}>
                 <Th sortKey="orderNumber" sort={sort} onSort={toggleSort}>Order #</Th>
+                <Th sortKey="orderType" sort={sort} onSort={toggleSort}>Order Type</Th>
                 <Th sortKey="patient" sort={sort} onSort={toggleSort}>Patient</Th>
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
                 <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
@@ -482,7 +481,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
+                  <td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
                     No orders in this view.
                   </td>
                 </tr>
@@ -533,29 +532,27 @@ function Row({ order, onClick }: { order: OrderShape; mounted: boolean; onClick:
       onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
     >
       {/* Cell order mirrors the <colgroup>/<thead> contract above:
-          Order # → Patient → Facility → Order Date → CSR → Driver.
+          Order # → Order Type → Patient → Facility → Order Date → CSR → Driver.
           Don't reorder one without the other two. */}
       <Td>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <span
-            style={{
-              fontFamily: "SourceCodePro, ui-monospace, SFMono-Regular, monospace",
-              fontSize: 12,
-              color: "#273951",
-              fontFeatureSettings: '"tnum"',
-              whiteSpace: "nowrap",
-            }}
-          >
-            {order.orderNumber}
-          </span>
-          {order.workOrderType !== "DELIVERY" && (
-            <Pill
-              label={WORK_ORDER_TYPE_LABELS[order.workOrderType]}
-              bg={WORK_ORDER_TYPE_COLORS[order.workOrderType].bg}
-              color={WORK_ORDER_TYPE_COLORS[order.workOrderType].color}
-            />
-          )}
-        </div>
+        <span
+          style={{
+            fontFamily: "SourceCodePro, ui-monospace, SFMono-Regular, monospace",
+            fontSize: 12,
+            color: "#273951",
+            fontFeatureSettings: '"tnum"',
+            whiteSpace: "nowrap",
+          }}
+        >
+          {order.orderNumber}
+        </span>
+      </Td>
+      <Td>
+        <Pill
+          label={WORK_ORDER_TYPE_LABELS[order.workOrderType]}
+          bg={WORK_ORDER_TYPE_COLORS[order.workOrderType].bg}
+          color={WORK_ORDER_TYPE_COLORS[order.workOrderType].color}
+        />
       </Td>
       <Td>
         <div
@@ -697,7 +694,6 @@ function filterOrders(
   let list = orders;
   if (view === "open") list = list.filter((o) => !isTerminalStatus(o.status));
   else if (view === "out") list = list.filter((o) => o.status === "OUT_FOR_DELIVERY");
-  else if (view === "auth") list = list.filter((o) => AUTH_IN_FLIGHT.includes(o.authStatus));
   else if (view === "delivered") list = list.filter((o) => o.status === "DELIVERED");
 
   if (fields.authFilter) {
@@ -746,6 +742,7 @@ function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): O
       case "orderDate":   return new Date(o.createdAt).getTime();
       case "patient": return o.patientDisplay.toLowerCase();
       case "facility": return (o.facilityName ?? "").toLowerCase();
+      case "orderType": return WORK_ORDER_TYPE_LABELS[o.workOrderType].toLowerCase();
       case "csr": return (o.csrName ?? "").toLowerCase();
       case "driver": {
         // Per-item drivers. Single shared name sorts naturally; mixed orders
