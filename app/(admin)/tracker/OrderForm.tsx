@@ -606,10 +606,12 @@ export default function OrderForm(props: Props) {
           {step === 2 && (
             <Section
               title="Stage 2 — Verification"
-              subtitle="Insurance, deductible, authorization, and any items still needed before dispatch."
+              subtitle="Insurance, deductible, authorization, and fulfillment routing."
             >
-              {/* Insurance row stays 2-col — both are equally weighted picks. */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+              {/* 3-col grid across the whole stage so every field lands on
+                  the same baseline. Insurance pair + Deductible Met? share
+                  row 1 — the three together read as "how are we paying?". */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 <InsuranceSelect
                   label="Primary Insurance"
                   value={primary}
@@ -623,11 +625,6 @@ export default function OrderForm(props: Props) {
                   options={lookups.insurance}
                   optional
                 />
-              </div>
-
-              {/* Deductible: status + the two amounts share a single 3-col
-                  row so the toggle no longer eats the full width on its own. */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <SearchSelect
                   label="Deductible Met?"
                   value={deductible}
@@ -639,6 +636,11 @@ export default function OrderForm(props: Props) {
                     { value: "NA", label: "N/A" },
                   ]}
                 />
+              </div>
+
+              {/* Coinsurance + Deductible Amount in their own narrower row —
+                  they're small numeric inputs and don't need a 3rd partner. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <Input
                   label="Coinsurance %"
                   value={coinsurancePct}
@@ -655,13 +657,23 @@ export default function OrderForm(props: Props) {
                   placeholder="0.00"
                   prefix="$"
                 />
+                <div />
               </div>
 
-              {/* Auth + verification outcome share one 3-col row.
-                  Authorization Status — DOS Submitted (only when auth needed)
-                  — Order Status. Pending Document Actions appears immediately
-                  below as a conditional second row when auth = Pending Documents. */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+              {/* Auth + Order Status share a row. Grid collapses to 2-col
+                  when auth = Not Required so we don't render an empty middle
+                  slot; expands to 3-col when DOS Submitted is relevant. */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    authStatus !== "NOT_REQ"
+                      ? "repeat(3, minmax(0, 1fr))"
+                      : "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                  marginTop: 12,
+                }}
+              >
                 <div>
                   <SearchSelect
                     label="Authorization Status"
@@ -684,15 +696,13 @@ export default function OrderForm(props: Props) {
                     </div>
                   )}
                 </div>
-                {authStatus !== "NOT_REQ" ? (
+                {authStatus !== "NOT_REQ" && (
                   <Input
                     label="DOS Submitted"
                     type="date"
                     value={dosSubmitted}
                     onChange={setDosSubmitted}
                   />
-                ) : (
-                  <div />
                 )}
                 <SearchSelect
                   label="Order Status"
@@ -720,8 +730,7 @@ export default function OrderForm(props: Props) {
                 </div>
               )}
 
-              {/* Fulfillment Companies stays wider — chip multi reads better
-                  with room to wrap, but capped so it doesn't span the full row. */}
+              {/* Fulfillment Companies capped so it doesn't sprawl the row. */}
               <div style={{ marginTop: 12, maxWidth: 640 }}>
                 <Label>Fulfillment Companies</Label>
                 <ChipMulti
