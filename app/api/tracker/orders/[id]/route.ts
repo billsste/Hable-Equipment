@@ -454,9 +454,17 @@ export async function PATCH(
           : 0,
       }));
 
+    // diffItems labels equipment-list changes (add/remove/qty) for the
+    // history event. Per-item edits (driverId, completedAt, doorTagCount)
+    // wouldn't surface in that diff, but they still need to persist — so
+    // detect any per-item drift and flip itemsChanged regardless. The
+    // history event still only fires when diffItems found something the
+    // user would want to read.
     const itemDetail = await diffItems(existing.items, newItemRows);
     if (itemDetail) {
       events.push({ who, action: ORDER_ACTIONS.ITEMS_CHANGED, detail: itemDetail });
+    }
+    if (itemDetail || perItemFieldsChanged(existing.items, newItemRows)) {
       itemsChanged = true;
     }
   }
@@ -548,6 +556,46 @@ function eqDate(a: Date | null | undefined, b: Date | null | undefined): boolean
   const at = a ? a.getTime() : null;
   const bt = b ? b.getTime() : null;
   return at === bt;
+}
+
+// True when any per-item field (driver, completion date, door tag count)
+// differs between the existing rows and the incoming payload. Equipment-list
+// adds/removes/qty changes are covered by `diffItems`; this catches the
+// edits that diffItems silently passes over (the user-visible Stage 3
+// driver/date/door-tag inputs).
+function perItemFieldsChanged(
+  existingItems: ReadonlyArray<{
+    equipmentId: string;
+    driverId: number | null;
+    completedAt: Date | null;
+    doorTagCount: number;
+  }>,
+  next: ReadonlyArray<{
+    equipmentId: string;
+    driverId: number | null;
+    completedAt: Date | null;
+    doorTagCount: number;
+  }>,
+): boolean {
+  if (existingItems.length !== next.length) return true;
+  const oldByEq = new Map(
+    existingItems.map((it) => [
+      it.equipmentId,
+      {
+        driverId: it.driverId,
+        completedAt: it.completedAt?.getTime() ?? null,
+        doorTagCount: it.doorTagCount,
+      },
+    ]),
+  );
+  for (const it of next) {
+    const prev = oldByEq.get(it.equipmentId);
+    if (!prev) return true;
+    if (prev.driverId !== it.driverId) return true;
+    if (prev.completedAt !== (it.completedAt?.getTime() ?? null)) return true;
+    if (prev.doorTagCount !== it.doorTagCount) return true;
+  }
+  return false;
 }
 
 async function diffItems(
