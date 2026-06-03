@@ -623,8 +623,10 @@ export default function OrderForm(props: Props) {
                 />
               </div>
 
-              {/* Coinsurance + Deductible Amount in their own narrower row —
-                  they're small numeric inputs and don't need a 3rd partner. */}
+              {/* Row 2 finishes the "how are we paying?" block: the two
+                  amount fields and the DOS Submitted date stamp. DOS is
+                  always shown now (no longer auth-conditional) so the row
+                  reads top-to-bottom without surprises. */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <Input
                   label="Coinsurance %"
@@ -642,23 +644,41 @@ export default function OrderForm(props: Props) {
                   placeholder="0.00"
                   prefix="$"
                 />
-                <div />
+                <Input
+                  label="DOS Submitted"
+                  type="date"
+                  value={dosSubmitted}
+                  onChange={setDosSubmitted}
+                />
               </div>
 
-              {/* Auth + Order Status share a row. Grid collapses to 2-col
-                  when auth = Not Required so we don't render an empty middle
-                  slot; expands to 3-col when DOS Submitted is relevant. */}
+              {/* Verification outcome row: Order Status anchors the left,
+                  Authorization Status sits in the middle, and Pending
+                  Document Actions appears immediately to its right the
+                  moment auth = Pending Documents. Grid collapses to 2-col
+                  otherwise so col 3 isn't a phantom slot. */}
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns:
-                    authStatus !== "NOT_REQ"
+                    authStatus === "PENDING_DOCUMENTS"
                       ? "repeat(3, minmax(0, 1fr))"
                       : "repeat(2, minmax(0, 1fr))",
                   gap: 12,
                   marginTop: 12,
+                  alignItems: "start",
                 }}
               >
+                <SearchSelect
+                  label="Order Status"
+                  value={verificationStatus}
+                  onChange={(v) => setVerificationStatus((v as VerificationStatus | null) ?? null)}
+                  placeholder="Search…"
+                  options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
+                    value: k,
+                    label: VERIFICATION_STATUS_LABELS[k],
+                  })))}
+                />
                 <div>
                   <SearchSelect
                     label="Authorization Status"
@@ -681,39 +701,21 @@ export default function OrderForm(props: Props) {
                     </div>
                   )}
                 </div>
-                {authStatus !== "NOT_REQ" && (
-                  <Input
-                    label="DOS Submitted"
-                    type="date"
-                    value={dosSubmitted}
-                    onChange={setDosSubmitted}
-                  />
+                {authStatus === "PENDING_DOCUMENTS" && (
+                  <div>
+                    <Label>Pending Document Actions</Label>
+                    <ChipMulti
+                      value={pendingDocuments}
+                      onToggle={(key) =>
+                        setPendingDocuments((prev) =>
+                          prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+                        )
+                      }
+                      options={PENDING_DOCUMENT_OPTIONS.map((d) => ({ key: d.key, label: d.label }))}
+                    />
+                  </div>
                 )}
-                <SearchSelect
-                  label="Order Status"
-                  value={verificationStatus}
-                  onChange={(v) => setVerificationStatus((v as VerificationStatus | null) ?? null)}
-                  placeholder="Search…"
-                  options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
-                    value: k,
-                    label: VERIFICATION_STATUS_LABELS[k],
-                  })))}
-                />
               </div>
-              {authStatus === "PENDING_DOCUMENTS" && (
-                <div style={{ marginTop: 12, maxWidth: 640 }}>
-                  <Label>Pending Document Actions</Label>
-                  <ChipMulti
-                    value={pendingDocuments}
-                    onToggle={(key) =>
-                      setPendingDocuments((prev) =>
-                        prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-                      )
-                    }
-                    options={PENDING_DOCUMENT_OPTIONS.map((d) => ({ key: d.key, label: d.label }))}
-                  />
-                </div>
-              )}
 
               {/* Fulfillment Companies capped so it doesn't sprawl the row. */}
               <div style={{ marginTop: 12, maxWidth: 640 }}>
