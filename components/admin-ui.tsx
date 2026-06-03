@@ -147,6 +147,13 @@ export function SearchInput({
 
 // Color helper used by Pill borders; lifted out of TrackerClient so the
 // primitive doesn't import from a page module.
+// Sort an options array alphabetically by label (case-insensitive). Used at
+// every Combobox/SearchSelect/SegmentedSelect call site that derives options
+// from an enum/labels map so the picker reads A-Z. Stable on duplicate labels.
+export function sortByLabel<T extends { label: string }>(opts: T[]): T[] {
+  return [...opts].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+}
+
 export function hexWithAlpha(color: string, alpha: number): string {
   if (color.startsWith("rgba")) return color;
   if (color.startsWith("rgb(")) {

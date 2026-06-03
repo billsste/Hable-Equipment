@@ -48,9 +48,11 @@ export async function GET(request: Request) {
       select: { id: true, name: true, initials: true, facilityType: true },
       orderBy: { name: "asc" },
     }),
+    // Every lookup sorts alphabetically by label/name — Brent 2026-06: no
+    // more sortOrder-first ordering, all pickers read A-Z.
     db.whatsNeededOption.findMany({
       where: { active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: { label: "asc" },
     }),
     db.insuranceOption.findMany({
       where: { active: true },
@@ -58,19 +60,19 @@ export async function GET(request: Request) {
     }),
     db.fulfillmentCompany.findMany({
       where: { active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: { label: "asc" },
     }),
     db.itemTypeOption.findMany({
       where: { active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: { label: "asc" },
     }),
     db.cancellationReason.findMany({
       where: { active: true },
-      orderBy: { sortOrder: "asc" },
+      orderBy: { label: "asc" },
     }),
     db.equipment.findMany({
       where: { active: true },
-      orderBy: [{ category: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+      orderBy: [{ category: "asc" }, { name: "asc" }],
     }),
   ]);
 

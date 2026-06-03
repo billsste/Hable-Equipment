@@ -17,6 +17,7 @@ import {
   type VerificationStatus,
 } from "@/lib/order-types";
 import type { OutcomeStatus, WorkOrderType } from "@prisma/client";
+import { sortByLabel } from "@/components/admin-ui";
 import type { Lookups } from "./TrackerClient";
 import {
   ActionBtn,
@@ -526,10 +527,10 @@ export default function OrderForm(props: Props) {
                     // Brent 2026-06: ELDERCARE + SERVICE_PICKUP no longer
                     // selectable. ELDERCARE is replaced by the boolean
                     // eldercare flag below; SERVICE_PICKUP folds into PICK_UP.
-                    options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
+                    options={sortByLabel((Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
                       value: k,
                       label: WORK_ORDER_TYPE_LABELS[k],
-                    }))}
+                    })))}
                   />
                   <SegmentedSelect
                     label="Eldercare"
@@ -715,10 +716,10 @@ export default function OrderForm(props: Props) {
                   label="Verification Status"
                   value={verificationStatus}
                   onChange={(v) => setVerificationStatus((v as VerificationStatus | null) ?? null)}
-                  options={(Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
+                  options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
                     value: k,
                     label: VERIFICATION_STATUS_LABELS[k],
-                  }))}
+                  })))}
                 />
               </div>
 
@@ -813,10 +814,10 @@ export default function OrderForm(props: Props) {
                     setStatus(next);
                     if (!requiresReason(next)) setStatusReason("");
                   }}
-                  options={(Object.keys(STATUS_LABELS) as OutcomeStatus[]).map((k) => ({
+                  options={sortByLabel((Object.keys(STATUS_LABELS) as OutcomeStatus[]).map((k) => ({
                     value: k,
                     label: STATUS_LABELS[k],
-                  }))}
+                  })))}
                 />
                 {requiresReason(status) && (
                   <SearchSelect
@@ -824,10 +825,10 @@ export default function OrderForm(props: Props) {
                     required
                     value={statusReason || null}
                     onChange={(v) => setStatusReason(v ?? "")}
-                    options={lookups.cancellationReasons.map((r) => ({
+                    options={sortByLabel(lookups.cancellationReasons.map((r) => ({
                       value: r.label,
                       label: r.label,
-                    }))}
+                    })))}
                   />
                 )}
               </div>

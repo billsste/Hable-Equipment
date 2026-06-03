@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { SerialStatus } from "@prisma/client";
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
-import { Muted, SearchInput, Td, Th } from "@/components/admin-ui";
+import { Muted, SearchInput, Td, Th, sortByLabel } from "@/components/admin-ui";
 import { Combobox } from "@/components/combobox";
 
 export type EquipmentRow = {
@@ -149,13 +149,13 @@ export default function InventoryClient({ currentUser, equipment, initialSerials
               value={equipmentFilter}
               onChange={setEquipmentFilter}
               placeholder="All equipment"
-              options={equipment.map((e) => ({ value: e.id, label: e.name }))}
+              options={sortByLabel(equipment.map((e) => ({ value: e.id, label: e.name })))}
             />
             <Combobox
               value={statusFilter}
               onChange={(v) => setStatusFilter(v as SerialStatus | "")}
               placeholder="All status"
-              options={(Object.keys(STATUS_LABEL) as SerialStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
+              options={sortByLabel((Object.keys(STATUS_LABEL) as SerialStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] })))}
             />
           </>
         )}
@@ -439,7 +439,7 @@ function AddSerialsModal({ equipment, onClose, onAdded }: {
             value={equipmentId}
             onChange={setEquipmentId}
             placeholder="Search equipment…"
-            options={equipment.map((e) => ({ value: e.id, label: `${e.name} (${e.category})` }))}
+            options={sortByLabel(equipment.map((e) => ({ value: e.id, label: `${e.name} (${e.category})` })))}
             clearable={false}
             width="100%"
           />

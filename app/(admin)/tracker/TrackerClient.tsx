@@ -16,7 +16,7 @@ import {
 import type { WorkOrderType } from "@prisma/client";
 import OrderForm from "./OrderForm";
 import { Download, Plus, Printer } from "lucide-react";
-import { Muted, Pill, SearchInput, Td, Th, hexWithAlpha } from "@/components/admin-ui";
+import { Muted, Pill, SearchInput, Td, Th, hexWithAlpha, sortByLabel } from "@/components/admin-ui";
 import { Combobox } from "@/components/combobox";
 import { downloadCsv } from "@/lib/utils";
 
@@ -341,50 +341,50 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           value={insuranceFilter}
           onChange={setInsuranceFilter}
           placeholder="All insurance"
-          options={lookups.insurance.map((i) => ({ value: i.key, label: i.label }))}
+          options={sortByLabel(lookups.insurance.map((i) => ({ value: i.key, label: i.label })))}
         />
         <FilterSelect
           value={authFilter}
           onChange={setAuthFilter}
           placeholder="All auth"
-          options={(Object.keys(AUTH_LABELS) as Array<keyof typeof AUTH_LABELS>).map((k) => ({
+          options={sortByLabel((Object.keys(AUTH_LABELS) as Array<keyof typeof AUTH_LABELS>).map((k) => ({
             value: k,
             label: AUTH_LABELS[k],
-          }))}
+          })))}
         />
         <FilterSelect
           value={deductibleFilter}
           onChange={setDeductibleFilter}
           placeholder="All deductible"
-          options={[
+          options={sortByLabel([
             { value: "MET", label: "Met" },
             { value: "NOT_MET", label: "Not Met" },
             { value: "NA", label: "N/A" },
-          ]}
+          ])}
         />
         <FilterSelect
           value={companyFilter}
           onChange={setCompanyFilter}
           placeholder="All companies"
-          options={lookups.companies.map((c) => ({ value: c.key, label: c.label }))}
+          options={sortByLabel(lookups.companies.map((c) => ({ value: c.key, label: c.label })))}
         />
         <FilterSelect
           value={typeFilter}
           onChange={setTypeFilter}
           placeholder="All types"
-          options={(Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
+          options={sortByLabel((Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
             value: k,
             label: WORK_ORDER_TYPE_LABELS[k],
-          }))}
+          })))}
         />
         <FilterSelect
           value={verificationFilter}
           onChange={setVerificationFilter}
           placeholder="All verification"
-          options={(Object.keys(VERIFICATION_STATUS_LABELS) as Array<keyof typeof VERIFICATION_STATUS_LABELS>).map((k) => ({
+          options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as Array<keyof typeof VERIFICATION_STATUS_LABELS>).map((k) => ({
             value: k,
             label: VERIFICATION_STATUS_LABELS[k],
-          }))}
+          })))}
         />
         <FilterSelect
           value={datePreset === "all" ? "" : datePreset}

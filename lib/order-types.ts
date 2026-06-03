@@ -219,13 +219,13 @@ export const AUTH_IN_FLIGHT: ReadonlyArray<AuthStatus> = [
 
 // Five Pending-Documents checkboxes per Brent's call. Stored as String[] in
 // Order.pendingDocuments; the keys mirror the WhatsNeededOption shape (stable
-// uppercase identifiers + human label).
+// uppercase identifiers + human label). Sorted alphabetically by label.
 export const PENDING_DOCUMENT_OPTIONS = [
   { key: "DIAGNOSIS_CODE", label: "Diagnosis Code" },
-  { key: "SIGNATURE",      label: "Signature" },
   { key: "FACE_SHEET",     label: "Face Sheet" },
-  { key: "PICKUP_TICKET",  label: "Pick Up Ticket" },
   { key: "NOTES",          label: "Notes" },
+  { key: "PICKUP_TICKET",  label: "Pick Up Ticket" },
+  { key: "SIGNATURE",      label: "Signature" },
 ] as const;
 
 export type PendingDocument = (typeof PENDING_DOCUMENT_OPTIONS)[number]["key"];
