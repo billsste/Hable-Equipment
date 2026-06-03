@@ -513,8 +513,18 @@ export default function OrderForm(props: Props) {
               title="Stage 1 — Initial Intake"
               subtitle="The details captured the moment a referral call comes in."
             >
-              {isCreate && (
-                <div className="mb-3 grid" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 200px)", gap: 12, alignItems: "end" }}>
+              {!isCreate && initial?.linkedOrderNumber && (
+                <div className="mb-2 text-[11px]" style={{ color: "#64748d" }}>
+                  Linked to order {initial.linkedOrderNumber}
+                </div>
+              )}
+              {/* Three-column grid throughout Stage 1 so no single field
+                  stretches the full row. Work Order Type / Eldercare / CSR
+                  read as the "who/what" header; patient + facility on row 2;
+                  the three scheduling dates share row 3; Equipment is the
+                  only full-width control (picker has its own width). */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                {isCreate && (
                   <SearchSelect
                     label="Work Order Type"
                     value={workOrderType}
@@ -527,6 +537,8 @@ export default function OrderForm(props: Props) {
                       label: WORK_ORDER_TYPE_LABELS[k],
                     })))}
                   />
+                )}
+                {isCreate && (
                   <SearchSelect
                     label="Eldercare"
                     value={eldercare ? "YES" : "NO"}
@@ -537,14 +549,14 @@ export default function OrderForm(props: Props) {
                       { value: "YES", label: "Yes" },
                     ]}
                   />
-                </div>
-              )}
-              {!isCreate && initial?.linkedOrderNumber && (
-                <div className="mb-2 text-[11px]" style={{ color: "#64748d" }}>
-                  Linked to order {initial.linkedOrderNumber}
-                </div>
-              )}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                )}
+                <UserSelect
+                  label="CSR"
+                  value={csrId}
+                  onChange={setCsrId}
+                  options={lookups.csrs}
+                  required
+                />
                 <Input
                   label="Patient First Name"
                   value={patientFirst}
@@ -557,22 +569,13 @@ export default function OrderForm(props: Props) {
                   onChange={setPatientLast}
                   required={!isServiceCallType(workOrderType)}
                 />
-                <UserSelect
-                  label="CSR"
-                  value={csrId}
-                  onChange={setCsrId}
-                  options={lookups.csrs}
+                <FacilitySelect
+                  label="Facility"
+                  value={facilityId}
+                  onChange={setFacilityId}
+                  options={lookups.facilities}
                   required
                 />
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <FacilitySelect
-                    label="Facility"
-                    value={facilityId}
-                    onChange={setFacilityId}
-                    options={lookups.facilities}
-                    required
-                  />
-                </div>
                 <Input
                   label="Order Date"
                   type="date"
@@ -609,6 +612,7 @@ export default function OrderForm(props: Props) {
               title="Stage 2 — Verification"
               subtitle="Insurance, deductible, authorization, and any items still needed before dispatch."
             >
+              {/* Insurance row stays 2-col — both are equally weighted picks. */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
                 <InsuranceSelect
                   label="Primary Insurance"
@@ -625,14 +629,9 @@ export default function OrderForm(props: Props) {
                 />
               </div>
 
-              {/* Brent 2026-06: Plan ID / Plan Type / Plan Name removed.
-                  Existing rows keep their values in the DB until commit B drops
-                  the columns. The form no longer reads or writes them. */}
-
-              {/* Deductible: status + the two amounts together. Coinsurance
-                  and Deductible Amount are only meaningful once "Met / Not Met"
-                  is established, so they read more naturally below the toggle. */}
-              <div style={{ marginTop: 12 }}>
+              {/* Deductible: status + the two amounts share a single 3-col
+                  row so the toggle no longer eats the full width on its own. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <SearchSelect
                   label="Deductible Met?"
                   value={deductible}
@@ -644,8 +643,6 @@ export default function OrderForm(props: Props) {
                     { value: "NA", label: "N/A" },
                   ]}
                 />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <Input
                   label="Coinsurance %"
                   value={coinsurancePct}
@@ -664,13 +661,11 @@ export default function OrderForm(props: Props) {
                 />
               </div>
 
-              {/* Authorization block: status on the left, DOS Submitted (the
-                  date the auth packet went out) on the right so they read as
-                  one decision. The Pending Document Actions multi-select
-                  appears immediately below the row when the user picks
-                  "Pending Documents" — the follow-up sits inside the same
-                  block instead of buried after Order Status. */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+              {/* Auth + verification outcome share one 3-col row.
+                  Authorization Status — DOS Submitted (only when auth needed)
+                  — Order Status. Pending Document Actions appears immediately
+                  below as a conditional second row when auth = Pending Documents. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <div>
                   <SearchSelect
                     label="Authorization Status"
@@ -703,9 +698,19 @@ export default function OrderForm(props: Props) {
                 ) : (
                   <div />
                 )}
+                <SearchSelect
+                  label="Order Status"
+                  value={verificationStatus}
+                  onChange={(v) => setVerificationStatus((v as VerificationStatus | null) ?? null)}
+                  placeholder="Search…"
+                  options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
+                    value: k,
+                    label: VERIFICATION_STATUS_LABELS[k],
+                  })))}
+                />
               </div>
               {authStatus === "PENDING_DOCUMENTS" && (
-                <div style={{ marginTop: 12 }}>
+                <div style={{ marginTop: 12, maxWidth: 640 }}>
                   <Label>Pending Document Actions</Label>
                   <ChipMulti
                     value={pendingDocuments}
@@ -719,30 +724,15 @@ export default function OrderForm(props: Props) {
                 </div>
               )}
 
-              {/* Brent 2026-06: Fulfillment Companies + Order Status close
-                  out the verification step. "What's Still Needed" was removed
-                  in this pass — Pending Document Actions covers the auth
-                  follow-up, and unmet equipment lives in Stage 1's picker. */}
-              <div style={{ marginTop: 12 }}>
+              {/* Fulfillment Companies stays wider — chip multi reads better
+                  with room to wrap, but capped so it doesn't span the full row. */}
+              <div style={{ marginTop: 12, maxWidth: 640 }}>
                 <Label>Fulfillment Companies</Label>
                 <ChipMulti
                   options={lookups.companies.map((c) => ({ key: c.key, label: c.label }))}
                   value={companies}
                   onToggle={toggleCompany}
                   placeholder="Search companies to add…"
-                />
-              </div>
-
-              <div style={{ marginTop: 12 }}>
-                <SearchSelect
-                  label="Order Status"
-                  value={verificationStatus}
-                  onChange={(v) => setVerificationStatus((v as VerificationStatus | null) ?? null)}
-                  placeholder="Search…"
-                  options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
-                    value: k,
-                    label: VERIFICATION_STATUS_LABELS[k],
-                  })))}
                 />
               </div>
             </Section>
@@ -781,7 +771,9 @@ export default function OrderForm(props: Props) {
                 />
               )}
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+              {/* Handler is one of three Internal/Rep/Facility — constrain to
+                  1/3 width so it matches every other single-pick dropdown. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <SearchSelect
                   label="Handler"
                   value={handler}
@@ -796,10 +788,9 @@ export default function OrderForm(props: Props) {
               </div>
 
               <SubHeader label="3 · Schedule" />
-              {/* Brent 2026-06: Stage 3 mirrors the dates entered in Stage 1
-                  (Order Intake) verbatim — same labels, read-only here so the
-                  driver sees exactly what the CSR captured. */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+              {/* Stage 1 dates mirrored read-only, three across so each takes
+                  one column instead of wrapping to two rows. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 <ReadonlyDate
                   label="Order Date"
                   iso={isCreate ? (callReceivedDate || null) : (initial as OrderShape).callReceivedDate}
@@ -815,7 +806,9 @@ export default function OrderForm(props: Props) {
               </div>
 
               <SubHeader label="4 · Outcome" />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+              {/* Delivery Status + Reason share one 3-col row. Reason slot is
+                  empty unless the status requires it (cancel/hold/etc.). */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 <SearchSelect
                   label="Delivery Status"
                   value={status}
