@@ -171,6 +171,14 @@ export function SearchSelect({
             setOpen(true);
             e.target.select();
           }}
+          // Clicking an already-focused input doesn't re-fire onFocus, so the
+          // popover wouldn't reopen after the first selection. Mirror the
+          // onFocus behavior here so a second click always reopens the list.
+          onClick={(e) => {
+            setQuery(selectedLabel);
+            setOpen(true);
+            (e.currentTarget as HTMLInputElement).select();
+          }}
           onKeyDown={onKeyDown}
           autoComplete="off"
           className="w-full px-3 py-2 text-[13px] outline-none"

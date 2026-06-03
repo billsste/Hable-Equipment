@@ -69,7 +69,6 @@ export default function OrderForm(props: Props) {
   const [patientFirst, setPatientFirst] = useState(initial?.patientFirst ?? "");
   const [patientLast, setPatientLast] = useState(initial?.patientLast ?? "");
   const [facilityId, setFacilityId] = useState<number | null>(initial?.facilityId ?? null);
-  const [whatsNeeded, setWhatsNeeded] = useState<string[]>(initial?.whatsNeeded ?? []);
   const [callReceivedDate, setCallReceivedDate] = useState(initial?.callReceivedDate?.slice(0, 10) ?? "");
 
   const [primary, setPrimary] = useState<string | null>(initial?.primaryInsuranceKey ?? null);
@@ -141,9 +140,6 @@ export default function OrderForm(props: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  function toggleWhatsNeeded(key: string) {
-    setWhatsNeeded((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
-  }
   function toggleCompany(key: string) {
     setCompanies((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   }
@@ -162,7 +158,6 @@ export default function OrderForm(props: Props) {
           patientFirst,
           patientLast,
           facilityId,
-          whatsNeeded,
           callReceivedDate: callReceivedDate || null,
           dischargeDate: dischargeDate || null,
           requestedDeliveryDate: requestedDeliveryDate || null,
@@ -222,7 +217,6 @@ export default function OrderForm(props: Props) {
           patientFirst,
           patientLast,
           facilityId,
-          whatsNeeded,
           callReceivedDate: callReceivedDate || null,
           primaryInsuranceKey: primary,
           secondaryInsuranceKey: secondary,
@@ -292,10 +286,10 @@ export default function OrderForm(props: Props) {
     }
   }
 
-  const signatureWarning =
-    authStatus === "READY_TO_SUBMIT" && whatsNeeded.includes("SIG")
-      ? "Signature is still listed under What's Still Needed. Auth payers typically require a signed face sheet before submission."
-      : null;
+  // "Signature still needed" warning was removed alongside the
+  // What's-Still-Needed field — the new Pending Document Actions multi-select
+  // captures missing signatures directly when auth is PENDING_DOCUMENTS.
+  const signatureWarning: string | null = null;
 
   const stageInfo = initial ? STAGE_COLORS[initial.stage] : { bg: "rgba(83,58,253,0.10)", color: "#4434d4" };
   const isCreate = mode === "create";
@@ -635,7 +629,10 @@ export default function OrderForm(props: Props) {
                   Existing rows keep their values in the DB until commit B drops
                   the columns. The form no longer reads or writes them. */}
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+              {/* Deductible: status + the two amounts together. Coinsurance
+                  and Deductible Amount are only meaningful once "Met / Not Met"
+                  is established, so they read more naturally below the toggle. */}
+              <div style={{ marginTop: 12 }}>
                 <SegmentedSelect
                   label="Deductible Met?"
                   value={deductible}
@@ -646,6 +643,33 @@ export default function OrderForm(props: Props) {
                     { value: "NA", label: "N/A" },
                   ]}
                 />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+                <Input
+                  label="Coinsurance %"
+                  value={coinsurancePct}
+                  onChange={(v) => setCoinsurancePct(v.replace(/[^\d]/g, "").slice(0, 3))}
+                  inputMode="numeric"
+                  placeholder="20"
+                  suffix="%"
+                />
+                <Input
+                  label="Deductible Amount"
+                  value={deductibleAmount}
+                  onChange={(v) => setDeductibleAmount(v.replace(/[^\d.]/g, ""))}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  prefix="$"
+                />
+              </div>
+
+              {/* Authorization block: status on the left, DOS Submitted (the
+                  date the auth packet went out) on the right so they read as
+                  one decision. The Pending Document Actions multi-select
+                  appears immediately below the row when the user picks
+                  "Pending Documents" — the follow-up sits inside the same
+                  block instead of buried after Order Status. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
                 <div>
                   <SearchSelect
                     label="Authorization Status"
@@ -668,41 +692,17 @@ export default function OrderForm(props: Props) {
                     </div>
                   )}
                 </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
-                <Input
-                  label="Coinsurance %"
-                  value={coinsurancePct}
-                  onChange={(v) => setCoinsurancePct(v.replace(/[^\d]/g, "").slice(0, 3))}
-                  inputMode="numeric"
-                  placeholder="20"
-                  suffix="%"
-                />
-                <Input
-                  label="Deductible Amount"
-                  value={deductibleAmount}
-                  onChange={(v) => setDeductibleAmount(v.replace(/[^\d.]/g, ""))}
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  prefix="$"
-                />
-              </div>
-
-              {authStatus !== "NOT_REQ" && (
-                <div style={{ marginTop: 12 }}>
+                {authStatus !== "NOT_REQ" ? (
                   <Input
                     label="DOS Submitted"
                     type="date"
                     value={dosSubmitted}
                     onChange={setDosSubmitted}
                   />
-                </div>
-              )}
-
-              {/* Brent 2026-06: conditional reveal — only when authStatus is
-                  PENDING_DOCUMENTS. Lets the team check off exactly which
-                  documents the auth packet is missing. */}
+                ) : (
+                  <div />
+                )}
+              </div>
               {authStatus === "PENDING_DOCUMENTS" && (
                 <div style={{ marginTop: 12 }}>
                   <Label>Pending Document Actions</Label>
@@ -718,7 +718,20 @@ export default function OrderForm(props: Props) {
                 </div>
               )}
 
-              {/* Brent 2026-06: manual outcome for the Verification step. */}
+              {/* Brent 2026-06: Fulfillment Companies + Order Status close
+                  out the verification step. "What's Still Needed" was removed
+                  in this pass — Pending Document Actions covers the auth
+                  follow-up, and unmet equipment lives in Stage 1's picker. */}
+              <div style={{ marginTop: 12 }}>
+                <Label>Fulfillment Companies</Label>
+                <ChipMulti
+                  options={lookups.companies.map((c) => ({ key: c.key, label: c.label }))}
+                  value={companies}
+                  onToggle={toggleCompany}
+                  placeholder="Search companies to add…"
+                />
+              </div>
+
               <div style={{ marginTop: 12 }}>
                 <SegmentedSelect
                   label="Order Status"
@@ -729,27 +742,6 @@ export default function OrderForm(props: Props) {
                     label: VERIFICATION_STATUS_LABELS[k],
                   })))}
                 />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
-                <div>
-                  <Label>What&apos;s Still Needed</Label>
-                  <ChipMulti
-                    options={lookups.whatsNeeded.map((w) => ({ key: w.key, label: w.label }))}
-                    value={whatsNeeded}
-                    onToggle={toggleWhatsNeeded}
-                    placeholder="Search items still needed…"
-                  />
-                </div>
-                <div>
-                  <Label>Fulfillment Companies</Label>
-                  <ChipMulti
-                    options={lookups.companies.map((c) => ({ key: c.key, label: c.label }))}
-                    value={companies}
-                    onToggle={toggleCompany}
-                    placeholder="Search companies to add…"
-                  />
-                </div>
               </div>
             </Section>
           )}
