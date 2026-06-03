@@ -885,11 +885,11 @@ function formatDc(iso: string | null): { dateLabel: string; urgency: DcUrgency }
   return { dateLabel, urgency };
 }
 
-// Full tabular export of every field we collect, exploded by driver: an order
-// whose items are split across two drivers produces two rows — order metadata
-// duplicated, the Driver / Items / Completed Date columns scoped to just that
-// driver's slice. An order with no driver-assigned items emits a single row
-// with empty driver columns. Designed for spreadsheet reporting / payroll.
+// Full tabular export: one row per piece of equipment. An order with 3 items
+// becomes 3 rows — order data duplicated; the Driver / Item / Quantity /
+// HCPCS / Completed Date columns hold that one item's values. Sorting or
+// pivoting in Excel just works. Orders with no equipment still emit one row
+// with empty item/driver columns so the order doesn't vanish from the export.
 function exportCsv(rows: OrderShape[]): void {
   const header = [
     // identity
@@ -915,77 +915,74 @@ function exportCsv(rows: OrderShape[]): void {
     "Order Status", "Delivery Status", "Eldercare",
     // companies + notes
     "Fulfillment Companies", "Notes",
-    // per-driver slice
-    "Driver", "Items", "Item Quantities",
-    "Item HCPCS Codes", "Completed Dates",
+    // per-item slice — one row per item
+    "Driver", "Item", "Quantity", "Category", "Abbreviation",
+    "HCPCS Code", "Completed Date",
     // bookkeeping
     "Created At", "Updated At",
   ];
 
   const data: string[][] = [];
   for (const o of rows) {
-    // Group items by driverId (`__unassigned` for items with no driver).
-    const groups = new Map<string, OrderShape["items"]>();
-    for (const it of o.items) {
-      const key = it.driverId == null ? "__unassigned" : String(it.driverId);
-      const arr = groups.get(key) ?? [];
-      arr.push(it);
-      groups.set(key, arr);
-    }
-    // No items at all → still emit one row so the order doesn't vanish.
-    const groupEntries = groups.size === 0
-      ? [["__unassigned", [] as OrderShape["items"]] as const]
-      : Array.from(groups.entries());
+    // Build the duplicated-order columns once, then append per-item columns.
+    const orderColumns: string[] = [
+      o.orderNumber,
+      WORK_ORDER_TYPE_LABELS[o.workOrderType],
+      o.linkedOrderNumber ?? "",
+      o.patientFirst,
+      o.patientLast,
+      o.facilityName ?? "",
+      o.facilityAddress ?? "",
+      o.facilityCity ?? "",
+      o.facilityState ?? "",
+      o.facilityZip ?? "",
+      o.facilityPhone ?? "",
+      o.facilityContact ?? "",
+      o.csrName ?? "",
+      o.handler ?? "",
+      fmtDate(o.createdAt),
+      fmtDate(o.callReceivedDate),
+      fmtDate(o.dischargeDate),
+      fmtDate(o.requestedDeliveryDate),
+      fmtDate(o.dosSubmitted),
+      fmtDate(o.printedAt),
+      fmtDate(o.acknowledgedAt),
+      fmtDate(o.outForDeliveryAt),
+      fmtDate(o.doorTaggedAt),
+      fmtDate(o.cancelledAt),
+      o.cancellationReason ?? "",
+      o.primaryInsuranceKey ?? "",
+      o.secondaryInsuranceKey ?? "",
+      o.deductibleStatus ?? "",
+      o.coinsurancePct != null ? String(o.coinsurancePct) : "",
+      o.deductibleAmount != null ? String(o.deductibleAmount) : "",
+      AUTH_LABELS[o.authStatus],
+      o.pendingDocuments
+        .map((k) => PENDING_DOCUMENT_OPTIONS.find((d) => d.key === k)?.label ?? k)
+        .join("; "),
+      o.verificationStatus ? VERIFICATION_STATUS_LABELS[o.verificationStatus] : "",
+      STATUS_LABELS[o.status],
+      o.eldercare ? "Yes" : "No",
+      o.fulfillmentCompanies.join("; "),
+      o.notes ?? "",
+    ];
+    const trailingColumns: string[] = [fmtDate(o.createdAt), fmtDate(o.updatedAt)];
 
-    for (const [, items] of groupEntries) {
-      const driverName = items.find((it) => it.driverName)?.driverName ?? "";
+    if (o.items.length === 0) {
+      data.push([...orderColumns, "", "", "", "", "", "", "", ...trailingColumns]);
+      continue;
+    }
+    for (const it of o.items) {
       data.push([
-        o.orderNumber,
-        WORK_ORDER_TYPE_LABELS[o.workOrderType],
-        o.linkedOrderNumber ?? "",
-        o.patientFirst,
-        o.patientLast,
-        o.facilityName ?? "",
-        o.facilityAddress ?? "",
-        o.facilityCity ?? "",
-        o.facilityState ?? "",
-        o.facilityZip ?? "",
-        o.facilityPhone ?? "",
-        o.facilityContact ?? "",
-        o.csrName ?? "",
-        o.handler ?? "",
-        fmtDate(o.createdAt),
-        fmtDate(o.callReceivedDate),
-        fmtDate(o.dischargeDate),
-        fmtDate(o.requestedDeliveryDate),
-        fmtDate(o.dosSubmitted),
-        fmtDate(o.printedAt),
-        fmtDate(o.acknowledgedAt),
-        fmtDate(o.outForDeliveryAt),
-        fmtDate(o.doorTaggedAt),
-        fmtDate(o.cancelledAt),
-        o.cancellationReason ?? "",
-        o.primaryInsuranceKey ?? "",
-        o.secondaryInsuranceKey ?? "",
-        o.deductibleStatus ?? "",
-        o.coinsurancePct != null ? String(o.coinsurancePct) : "",
-        o.deductibleAmount != null ? String(o.deductibleAmount) : "",
-        AUTH_LABELS[o.authStatus],
-        o.pendingDocuments
-          .map((k) => PENDING_DOCUMENT_OPTIONS.find((d) => d.key === k)?.label ?? k)
-          .join("; "),
-        o.verificationStatus ? VERIFICATION_STATUS_LABELS[o.verificationStatus] : "",
-        STATUS_LABELS[o.status],
-        o.eldercare ? "Yes" : "No",
-        o.fulfillmentCompanies.join("; "),
-        o.notes ?? "",
-        driverName,
-        items.map((it) => it.name).join("; "),
-        items.map((it) => String(it.quantity)).join("; "),
-        items.map((it) => it.hcpcsCode ?? "").join("; "),
-        items.map((it) => fmtDate(it.completedAt)).join("; "),
-        fmtDate(o.createdAt),
-        fmtDate(o.updatedAt),
+        ...orderColumns,
+        it.driverName ?? "",
+        it.name,
+        String(it.quantity),
+        it.category ?? "",
+        it.abbreviation ?? "",
+        it.hcpcsCode ?? "",
+        fmtDate(it.completedAt),
+        ...trailingColumns,
       ]);
     }
   }
