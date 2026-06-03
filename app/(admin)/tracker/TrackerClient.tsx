@@ -651,9 +651,12 @@ const FilterSelect = Combobox;
 // stays in place even after the user clears it (via X) only because the
 // user explicitly removed it — adding it back is one click away.
 type FilterDim = "auth" | "pendingDoc" | "verification" | "status" | "date";
+// Full field labels — these match the form's column names verbatim so the
+// filter bar reads like "the field you're filtering on", not a shorthand.
+// Date uses a dynamic label (the picked date column) — handled inline.
 const FILTER_DIM_LABEL: Record<FilterDim, string> = {
-  auth: "Authorization",
-  pendingDoc: "Pending Document",
+  auth: "Authorization Status",
+  pendingDoc: "Pending Document Actions",
   verification: "Order Status",
   status: "Delivery Status",
   date: "Date",
@@ -795,48 +798,53 @@ function FilterBar({
         </FilterChip>
       )}
       {expanded.has("date") && (
+        // Date filter — the label is the actual date column the user is
+        // filtering on (Order Date, Scheduled Discharge Date, etc.). The
+        // field picker is the click target on the label, the range picker
+        // is the value control.
         <FilterChip
-          label={FILTER_DIM_LABEL.date}
+          label={labelForDateField(dateFieldFilter)}
           onRemove={() => removeDim("date")}
-        >
-          <div style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+          labelPicker={
             <FilterSelect
               value={dateFieldFilter}
               onChange={(v) => onDateFieldFilterChange((v || "orderDate") as DateField)}
-              placeholder="Date field"
+              placeholder="Date column"
               options={DATE_FIELD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
               clearable={false}
+              width={170}
             />
-            <FilterSelect
-              value={datePreset === "all" ? "" : datePreset}
-              onChange={(v) => {
-                const next = (v || "all") as DatePreset;
-                onDatePresetChange(next);
-                if (next !== "custom") { onDateFromChange(""); onDateToChange(""); }
-              }}
-              placeholder="All time"
-              options={DATE_PRESET_OPTIONS}
-            />
-            {datePreset === "custom" && (
-              <>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => onDateFromChange(e.target.value)}
-                  style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
-                  aria-label={`${labelForDateField(dateFieldFilter)} from`}
-                />
-                <span style={{ fontSize: 12, color: "#94a3b8" }}>–</span>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => onDateToChange(e.target.value)}
-                  style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
-                  aria-label={`${labelForDateField(dateFieldFilter)} to`}
-                />
-              </>
-            )}
-          </div>
+          }
+        >
+          <FilterSelect
+            value={datePreset === "all" ? "" : datePreset}
+            onChange={(v) => {
+              const next = (v || "all") as DatePreset;
+              onDatePresetChange(next);
+              if (next !== "custom") { onDateFromChange(""); onDateToChange(""); }
+            }}
+            placeholder="All time"
+            options={DATE_PRESET_OPTIONS}
+          />
+          {datePreset === "custom" && (
+            <>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => onDateFromChange(e.target.value)}
+                style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
+                aria-label={`${labelForDateField(dateFieldFilter)} from`}
+              />
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>–</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => onDateToChange(e.target.value)}
+                style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
+                aria-label={`${labelForDateField(dateFieldFilter)} to`}
+              />
+            </>
+          )}
         </FilterChip>
       )}
 
@@ -934,56 +942,51 @@ function FilterBar({
   );
 }
 
-// Pill-style wrapper that puts a dimension label inline with its picker, and
-// gives every chip an X button. The picker itself is the same Combobox used
-// elsewhere — this just frames it consistently.
+// Inline filter group — just label + value picker + tiny remove X, no chip
+// background. The label is normally a static field name, but the Date filter
+// passes `labelPicker` so the user can click the label itself to choose
+// which date column they're filtering on.
 function FilterChip({
   label,
   onRemove,
+  labelPicker,
   children,
 }: {
   label: string;
   onRemove: () => void;
+  labelPicker?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "3px 4px 3px 10px",
-        background: "rgba(83,58,253,0.04)",
-        border: "1px solid rgba(83,58,253,0.18)",
-        borderRadius: 6,
-      }}
-    >
-      <span style={{ fontSize: 12, fontWeight: 500, color: "#4434d4", whiteSpace: "nowrap" }}>{label}</span>
-      <span style={{ color: "#cbd5e1", fontSize: 11 }}>·</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 4px" }}>
+      {labelPicker ? (
+        labelPicker
+      ) : (
+        <span style={{ fontSize: 12, color: "#64748d", whiteSpace: "nowrap" }}>{label}</span>
+      )}
       {children}
       <button
         type="button"
         onClick={onRemove}
         title={`Remove ${label} filter`}
         style={{
-          width: 22,
-          height: 22,
+          width: 18,
+          height: 18,
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#94a3b8",
+          color: "#cbd5e1",
           background: "transparent",
           border: 0,
           borderRadius: 3,
           cursor: "pointer",
-          marginLeft: 2,
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = "#4434d4"; e.currentTarget.style.background = "rgba(83,58,253,0.10)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.background = "transparent"; }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "#b03238"; e.currentTarget.style.background = "rgba(229,72,77,0.08)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "#cbd5e1"; e.currentTarget.style.background = "transparent"; }}
       >
-        <X size={12} />
+        <X size={11} />
       </button>
-    </div>
+    </span>
   );
 }
 
