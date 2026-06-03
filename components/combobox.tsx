@@ -42,9 +42,12 @@ export function Combobox({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
+    // Empty query (or query that still equals the currently-selected label)
+    // shows the full list — otherwise the user can't see siblings of the
+    // value they're trying to change.
+    if (!q || q === selectedLabel.toLowerCase()) return options;
     return options.filter((o) => o.label.toLowerCase().includes(q));
-  }, [query, options]);
+  }, [query, options, selectedLabel]);
 
   useEffect(() => {
     if (!open) return;
@@ -94,8 +97,21 @@ export function Combobox({
           value={open ? query : selectedLabel}
           placeholder={placeholder}
           onFocus={(e) => {
+            // Pre-fill the query with the current selection so reopening
+            // shows what's already chosen (and the full list of siblings
+            // via the selectedLabel passthrough in the filter). Selecting
+            // the text means typing replaces it cleanly.
+            setQuery(selectedLabel);
             setOpen(true);
             e.target.select();
+          }}
+          // Clicking an already-focused input doesn't re-fire onFocus, so the
+          // popover wouldn't reopen after the first selection. Mirror the
+          // focus behavior on click so a second click always reopens cleanly.
+          onClick={(e) => {
+            setQuery(selectedLabel);
+            setOpen(true);
+            (e.currentTarget as HTMLInputElement).select();
           }}
           onChange={(e) => {
             setQuery(e.target.value);
