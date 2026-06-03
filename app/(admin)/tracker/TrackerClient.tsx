@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AUTH_LABELS,
   AUTH_PICKER_VALUES,
@@ -17,7 +17,7 @@ import {
 } from "@/lib/order-types";
 import type { OutcomeStatus } from "@prisma/client";
 import OrderForm from "./OrderForm";
-import { Download, Plus, Printer } from "lucide-react";
+import { Download, Plus, Printer, X } from "lucide-react";
 import { Muted, Pill, SearchInput, Td, Th, hexWithAlpha, sortByLabel } from "@/components/admin-ui";
 import { Combobox } from "@/components/combobox";
 import { downloadCsv } from "@/lib/utils";
@@ -355,118 +355,47 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
         })}
       </div>
 
-      {/* Search + filters */}
-      <div className="flex flex-wrap items-center gap-2 no-print" style={{ marginBottom: 12 }}>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search by patient, facility, order #..."
-        />
-
-        <FilterSelect
-          value={authFilter}
-          onChange={setAuthFilter}
-          placeholder="All auth"
-          options={sortByLabel(AUTH_PICKER_VALUES.map((k) => ({
-            value: k,
-            label: AUTH_LABELS[k],
-          })))}
-        />
-        <FilterSelect
-          value={pendingDocFilter}
-          onChange={setPendingDocFilter}
-          placeholder="All pending docs"
-          options={sortByLabel(PENDING_DOCUMENT_OPTIONS.map((d) => ({ value: d.key, label: d.label })))}
-        />
-        <FilterSelect
-          value={verificationFilter}
-          onChange={setVerificationFilter}
-          placeholder="All order status"
-          options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as Array<keyof typeof VERIFICATION_STATUS_LABELS>).map((k) => ({
-            value: k,
-            label: VERIFICATION_STATUS_LABELS[k],
-          })))}
-        />
-        <FilterSelect
-          value={statusFilter}
-          onChange={setStatusFilter}
-          placeholder="All delivery status"
-          options={sortByLabel(DELIVERY_STATUS_PICKER_VALUES.map((k) => ({
-            value: k,
-            label: STATUS_LABELS[k],
-          })))}
-        />
-        {/* Date filter: which date + a range. The picker on the left chooses
-            the column the range applies to (Order Date, Scheduled Discharge,
-            Requested Delivery, DOS Submitted); the range picker on the right
-            is the preset / custom range. Both default to "All time". */}
-        <FilterSelect
-          value={dateFieldFilter}
-          onChange={(v) => setDateFieldFilter((v || "orderDate") as DateField)}
-          placeholder="Date field"
-          options={DATE_FIELD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-          clearable={false}
-        />
-        <FilterSelect
-          value={datePreset === "all" ? "" : datePreset}
-          onChange={(v) => {
-            const next = (v || "all") as DatePreset;
-            setDatePreset(next);
-            // Clear the custom inputs when switching off custom so the chip
-            // count and CSV match what's onscreen.
-            if (next !== "custom") { setDateFrom(""); setDateTo(""); }
-          }}
-          placeholder="All time"
-          options={DATE_PRESET_OPTIONS}
-        />
-        {datePreset === "custom" && (
-          <>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
-              aria-label={`${labelForDateField(dateFieldFilter)} from`}
-            />
-            <span style={{ fontSize: 12, color: "#94a3b8" }}>–</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
-              aria-label={`${labelForDateField(dateFieldFilter)} to`}
-            />
-          </>
-        )}
-
-        {hasFieldFilter && (
-          <button
-            type="button"
-            onClick={() => {
-              setAuthFilter("");
-              setPendingDocFilter("");
-              setVerificationFilter("");
-              setStatusFilter("");
-              setDatePreset("all");
-              setDateFrom("");
-              setDateTo("");
-            }}
-            style={{
-              padding: "6px 10px",
-              fontSize: 12,
-              color: "#533afd",
-              background: "transparent",
-              border: 0,
-            }}
-          >
-            Clear filters
-          </button>
-        )}
-
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "#64748d", fontFeatureSettings: '"tnum"' }}>
-          {filtered.length} of {orders.length}
-        </div>
-      </div>
+      {/* Search + filters — chip-based UI so the default state is just the
+          search box + a single "+ Filter" button. Active filters render as
+          inline pills; tapping a pill reopens its picker, the X clears it.
+          New filters get added through the "+ Filter" menu. No five-dropdown
+          row of always-on widgets. */}
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        // Auth
+        authFilter={authFilter}
+        onAuthFilterChange={setAuthFilter}
+        // Pending docs
+        pendingDocFilter={pendingDocFilter}
+        onPendingDocFilterChange={setPendingDocFilter}
+        // Order status
+        verificationFilter={verificationFilter}
+        onVerificationFilterChange={setVerificationFilter}
+        // Delivery status
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        // Date
+        dateFieldFilter={dateFieldFilter}
+        onDateFieldFilterChange={setDateFieldFilter}
+        datePreset={datePreset}
+        onDatePresetChange={setDatePreset}
+        dateFrom={dateFrom}
+        onDateFromChange={setDateFrom}
+        dateTo={dateTo}
+        onDateToChange={setDateTo}
+        hasFieldFilter={hasFieldFilter}
+        onClearAll={() => {
+          setAuthFilter("");
+          setPendingDocFilter("");
+          setVerificationFilter("");
+          setStatusFilter("");
+          setDatePreset("all");
+          setDateFrom("");
+          setDateTo("");
+        }}
+        countLabel={`${filtered.length} of ${orders.length}`}
+      />
 
       {/* Tracker table */}
       <div
@@ -714,6 +643,349 @@ function Card({ order, onClick }: { order: OrderShape; mounted: boolean; onClick
 // TrackerClient used to ship a local FilterSelect that was the prototype for
 // components/combobox.tsx. The shared Combobox is now the single source.
 const FilterSelect = Combobox;
+
+// Chip-based filter bar. Default state is just the search input + a single
+// "+ Filter" button — no row of always-on dropdowns. Each active filter
+// becomes a pill: clicking the value reopens the picker, the X clears it.
+// Inactive filters live behind the "+ Filter" menu; once added, the pill
+// stays in place even after the user clears it (via X) only because the
+// user explicitly removed it — adding it back is one click away.
+type FilterDim = "auth" | "pendingDoc" | "verification" | "status" | "date";
+const FILTER_DIM_LABEL: Record<FilterDim, string> = {
+  auth: "Authorization",
+  pendingDoc: "Pending Document",
+  verification: "Order Status",
+  status: "Delivery Status",
+  date: "Date",
+};
+
+function FilterBar({
+  search, onSearchChange,
+  authFilter, onAuthFilterChange,
+  pendingDocFilter, onPendingDocFilterChange,
+  verificationFilter, onVerificationFilterChange,
+  statusFilter, onStatusFilterChange,
+  dateFieldFilter, onDateFieldFilterChange,
+  datePreset, onDatePresetChange,
+  dateFrom, onDateFromChange,
+  dateTo, onDateToChange,
+  hasFieldFilter, onClearAll,
+  countLabel,
+}: {
+  search: string; onSearchChange: (v: string) => void;
+  authFilter: string; onAuthFilterChange: (v: string) => void;
+  pendingDocFilter: string; onPendingDocFilterChange: (v: string) => void;
+  verificationFilter: string; onVerificationFilterChange: (v: string) => void;
+  statusFilter: string; onStatusFilterChange: (v: string) => void;
+  dateFieldFilter: DateField; onDateFieldFilterChange: (v: DateField) => void;
+  datePreset: DatePreset; onDatePresetChange: (v: DatePreset) => void;
+  dateFrom: string; onDateFromChange: (v: string) => void;
+  dateTo: string; onDateToChange: (v: string) => void;
+  hasFieldFilter: boolean; onClearAll: () => void;
+  countLabel: string;
+}) {
+  // Which filters does the user want visible in the bar? A filter is visible
+  // if it has a value OR the user added it via "+ Filter" and is mid-edit.
+  // Removing a filter (X on the pill) takes it out of `expanded` so the bar
+  // collapses back to the chip set the user actually cares about.
+  const [expanded, setExpanded] = useState<Set<FilterDim>>(() => {
+    const init = new Set<FilterDim>();
+    if (authFilter) init.add("auth");
+    if (pendingDocFilter) init.add("pendingDoc");
+    if (verificationFilter) init.add("verification");
+    if (statusFilter) init.add("status");
+    if (datePreset !== "all") init.add("date");
+    return init;
+  });
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (!addMenuRef.current?.contains(e.target as Node)) setAddMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [addMenuOpen]);
+
+  function addDim(dim: FilterDim) {
+    setExpanded((prev) => new Set(prev).add(dim));
+    setAddMenuOpen(false);
+  }
+  function removeDim(dim: FilterDim) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.delete(dim);
+      return next;
+    });
+    if (dim === "auth") onAuthFilterChange("");
+    else if (dim === "pendingDoc") onPendingDocFilterChange("");
+    else if (dim === "verification") onVerificationFilterChange("");
+    else if (dim === "status") onStatusFilterChange("");
+    else if (dim === "date") {
+      onDatePresetChange("all");
+      onDateFromChange("");
+      onDateToChange("");
+    }
+  }
+
+  const availableDims: FilterDim[] = (Object.keys(FILTER_DIM_LABEL) as FilterDim[])
+    .filter((d) => !expanded.has(d));
+
+  return (
+    <div className="flex flex-wrap items-start gap-2 no-print" style={{ marginBottom: 12 }}>
+      <SearchInput value={search} onChange={onSearchChange} placeholder="Search by patient, facility, order #..." />
+
+      {expanded.has("auth") && (
+        <FilterChip
+          label={FILTER_DIM_LABEL.auth}
+          onRemove={() => removeDim("auth")}
+        >
+          <FilterSelect
+            value={authFilter}
+            onChange={onAuthFilterChange}
+            placeholder="Pick auth status"
+            options={sortByLabel(AUTH_PICKER_VALUES.map((k) => ({ value: k, label: AUTH_LABELS[k] })))}
+          />
+        </FilterChip>
+      )}
+      {expanded.has("pendingDoc") && (
+        <FilterChip
+          label={FILTER_DIM_LABEL.pendingDoc}
+          onRemove={() => removeDim("pendingDoc")}
+        >
+          <FilterSelect
+            value={pendingDocFilter}
+            onChange={onPendingDocFilterChange}
+            placeholder="Pick document"
+            options={sortByLabel(PENDING_DOCUMENT_OPTIONS.map((d) => ({ value: d.key, label: d.label })))}
+          />
+        </FilterChip>
+      )}
+      {expanded.has("verification") && (
+        <FilterChip
+          label={FILTER_DIM_LABEL.verification}
+          onRemove={() => removeDim("verification")}
+        >
+          <FilterSelect
+            value={verificationFilter}
+            onChange={onVerificationFilterChange}
+            placeholder="Pick order status"
+            options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as Array<keyof typeof VERIFICATION_STATUS_LABELS>).map((k) => ({
+              value: k,
+              label: VERIFICATION_STATUS_LABELS[k],
+            })))}
+          />
+        </FilterChip>
+      )}
+      {expanded.has("status") && (
+        <FilterChip
+          label={FILTER_DIM_LABEL.status}
+          onRemove={() => removeDim("status")}
+        >
+          <FilterSelect
+            value={statusFilter}
+            onChange={onStatusFilterChange}
+            placeholder="Pick delivery status"
+            options={sortByLabel(DELIVERY_STATUS_PICKER_VALUES.map((k) => ({
+              value: k,
+              label: STATUS_LABELS[k],
+            })))}
+          />
+        </FilterChip>
+      )}
+      {expanded.has("date") && (
+        <FilterChip
+          label={FILTER_DIM_LABEL.date}
+          onRemove={() => removeDim("date")}
+        >
+          <div style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+            <FilterSelect
+              value={dateFieldFilter}
+              onChange={(v) => onDateFieldFilterChange((v || "orderDate") as DateField)}
+              placeholder="Date field"
+              options={DATE_FIELD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              clearable={false}
+            />
+            <FilterSelect
+              value={datePreset === "all" ? "" : datePreset}
+              onChange={(v) => {
+                const next = (v || "all") as DatePreset;
+                onDatePresetChange(next);
+                if (next !== "custom") { onDateFromChange(""); onDateToChange(""); }
+              }}
+              placeholder="All time"
+              options={DATE_PRESET_OPTIONS}
+            />
+            {datePreset === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => onDateFromChange(e.target.value)}
+                  style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
+                  aria-label={`${labelForDateField(dateFieldFilter)} from`}
+                />
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>–</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => onDateToChange(e.target.value)}
+                  style={{ padding: "5px 8px", fontSize: 12, border: "1px solid #e5edf5", borderRadius: 4, color: "#273951", fontFeatureSettings: '"tnum"' }}
+                  aria-label={`${labelForDateField(dateFieldFilter)} to`}
+                />
+              </>
+            )}
+          </div>
+        </FilterChip>
+      )}
+
+      {/* "+ Filter" menu — opens a small list of dimensions not yet in the
+          bar. Tabs already cover the most common Delivery Status split, so
+          most users won't need to add anything; surfacing this as a single
+          button keeps the bar quiet until they do. */}
+      {availableDims.length > 0 && (
+        <div ref={addMenuRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setAddMenuOpen((s) => !s)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 10px",
+              fontSize: 13,
+              color: "#533afd",
+              background: "#fff",
+              border: "1px dashed rgba(83,58,253,0.4)",
+              borderRadius: 4,
+              cursor: "pointer",
+            }}
+          >
+            <Plus size={12} /> Filter
+          </button>
+          {addMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: "calc(100% + 4px)",
+                left: 0,
+                minWidth: 200,
+                background: "#fff",
+                border: "1px solid #e5edf5",
+                borderRadius: 4,
+                boxShadow: "rgba(23,23,23,0.12) 0px 6px 16px",
+                padding: 4,
+                zIndex: 30,
+              }}
+            >
+              {availableDims.map((dim) => (
+                <button
+                  key={dim}
+                  type="button"
+                  onClick={() => addDim(dim)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "6px 10px",
+                    fontSize: 13,
+                    color: "#273951",
+                    background: "transparent",
+                    border: 0,
+                    borderRadius: 3,
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(83,58,253,0.06)"; e.currentTarget.style.color = "#4434d4"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#273951"; }}
+                >
+                  {FILTER_DIM_LABEL[dim]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasFieldFilter && (
+        <button
+          type="button"
+          onClick={() => {
+            onClearAll();
+            setExpanded(new Set());
+          }}
+          style={{
+            padding: "6px 10px",
+            fontSize: 12,
+            color: "#533afd",
+            background: "transparent",
+            border: 0,
+            cursor: "pointer",
+          }}
+        >
+          Clear all
+        </button>
+      )}
+
+      <div style={{ marginLeft: "auto", fontSize: 12, color: "#64748d", fontFeatureSettings: '"tnum"', alignSelf: "center" }}>
+        {countLabel}
+      </div>
+    </div>
+  );
+}
+
+// Pill-style wrapper that puts a dimension label inline with its picker, and
+// gives every chip an X button. The picker itself is the same Combobox used
+// elsewhere — this just frames it consistently.
+function FilterChip({
+  label,
+  onRemove,
+  children,
+}: {
+  label: string;
+  onRemove: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "3px 4px 3px 10px",
+        background: "rgba(83,58,253,0.04)",
+        border: "1px solid rgba(83,58,253,0.18)",
+        borderRadius: 6,
+      }}
+    >
+      <span style={{ fontSize: 12, fontWeight: 500, color: "#4434d4", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ color: "#cbd5e1", fontSize: 11 }}>·</span>
+      {children}
+      <button
+        type="button"
+        onClick={onRemove}
+        title={`Remove ${label} filter`}
+        style={{
+          width: 22,
+          height: 22,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#94a3b8",
+          background: "transparent",
+          border: 0,
+          borderRadius: 3,
+          cursor: "pointer",
+          marginLeft: 2,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "#4434d4"; e.currentTarget.style.background = "rgba(83,58,253,0.10)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.background = "transparent"; }}
+      >
+        <X size={12} />
+      </button>
+    </div>
+  );
+}
 
 function filterOrders(
   orders: OrderShape[],
