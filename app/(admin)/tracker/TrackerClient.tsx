@@ -61,7 +61,7 @@ type Props = {
 };
 
 type ViewKey = "all" | "open" | "ready" | "out" | "auth" | "delivered";
-type SortKey = "orderNumber" | "patient" | "facility" | "csr" | "driver" | "discharge" | "orderDate";
+type SortKey = "orderNumber" | "patient" | "facility" | "csr" | "driver" | "orderDate";
 type SortDir = "asc" | "desc";
 
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
@@ -130,7 +130,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState<OrderShape | null>(null);
   const [creating, setCreating] = useState(initialNew);
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "discharge", dir: "asc" });
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "orderDate", dir: "desc" });
   // Order Date range filter — drives both table results AND CSV/Print output.
   // Preset "all" → no filter; "custom" → use the inline from/to date inputs.
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
@@ -462,12 +462,11 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
                 so the row still shows non-DELIVERY types at a glance. */}
             <colgroup>
               <col style={{ width: 150 }} />
-              <col style={{ width: "20%" }} />
-              <col style={{ width: "20%" }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 170 }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "14%" }} />
+              <col style={{ width: "24%" }} />
+              <col style={{ width: "24%" }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "16%" }} />
             </colgroup>
             <thead>
               <tr style={{ background: "#f6f9fc", borderBottom: "1px solid #e5edf5" }}>
@@ -475,7 +474,6 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
                 <Th sortKey="patient" sort={sort} onSort={toggleSort}>Patient</Th>
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
                 <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
-                <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Scheduled Discharge Date</Th>
                 <Th sortKey="csr" sort={sort} onSort={toggleSort}>CSR</Th>
                 <Th sortKey="driver" sort={sort} onSort={toggleSort}>Driver</Th>
               </tr>
@@ -483,7 +481,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
+                  <td colSpan={6} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
                     No orders in this view.
                   </td>
                 </tr>
@@ -520,9 +518,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   );
 }
 
-function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
-  const { dcInfo, dcBlocker } = deriveOrderDisplay(order);
-
+function Row({ order, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
   return (
     <tr
       onClick={onClick}
@@ -536,8 +532,8 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
       onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
     >
       {/* Cell order mirrors the <colgroup>/<thead> contract above:
-          Order # → Patient → Facility → Order Date → Scheduled Discharge Date →
-          CSR → Driver. Don't reorder one without the other two. */}
+          Order # → Patient → Facility → Order Date → CSR → Driver.
+          Don't reorder one without the other two. */}
       <Td>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span
@@ -597,16 +593,6 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
         </span>
       </Td>
       <Td>
-        {order.dischargeDate ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#273951", fontWeight: 500, fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
-            <span>{dcInfo.dateLabel}</span>
-            {mounted && dcBlocker && <BlockerChip blocker={dcBlocker} />}
-          </span>
-        ) : (
-          <Muted>—</Muted>
-        )}
-      </Td>
-      <Td>
         {order.csrName ? (
           <span
             style={{
@@ -631,8 +617,7 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
   );
 }
 
-function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
-  const { dcInfo, dcBlocker } = deriveOrderDisplay(order);
+function Card({ order, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -689,15 +674,6 @@ function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean
           if (s.kind === "multiple") return <span style={{ color: "#4434d4", fontWeight: 500 }}>Multiple drivers ({s.names.length})</span>;
           return <span style={{ color: "#94a3b8" }}>Unassigned</span>;
         })()}
-        {order.dischargeDate && (
-          <>
-            <span style={{ color: "#94a3b8" }}>·</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#273951", fontWeight: 500, fontFeatureSettings: '"tnum"' }}>
-              <span>DC {dcInfo.dateLabel}</span>
-              {mounted && dcBlocker && <BlockerChip blocker={dcBlocker} />}
-            </span>
-          </>
-        )}
       </div>
     </button>
   );
@@ -782,7 +758,6 @@ function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): O
         if (summary.kind === "multiple") return "~~multiple";
         return "~~unassigned";
       }
-      case "discharge": return o.dischargeDate ? new Date(o.dischargeDate).getTime() : Number.MAX_SAFE_INTEGER;
     }
   };
   return [...list].sort((a, b) => {
