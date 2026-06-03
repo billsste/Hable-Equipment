@@ -7,17 +7,15 @@ import {
   AUTH_PICKER_VALUES,
   DELIVERY_STATUS_PICKER_VALUES,
   PENDING_DOCUMENT_OPTIONS,
-  STAGE_COLORS,
-  STAGE_LABELS,
+  STATUS_COLORS,
   STATUS_LABELS,
   VERIFICATION_STATUS_LABELS,
   WORK_ORDER_TYPE_COLORS,
   WORK_ORDER_TYPE_LABELS,
-  authAgingDays,
   dcUrgency,
   type OrderShape,
 } from "@/lib/order-types";
-import type { OutcomeStatus, WorkOrderType } from "@prisma/client";
+import type { OutcomeStatus } from "@prisma/client";
 import OrderForm from "./OrderForm";
 import { Download, Plus, Printer } from "lucide-react";
 import { Muted, Pill, SearchInput, Td, Th, hexWithAlpha, sortByLabel } from "@/components/admin-ui";
@@ -63,7 +61,7 @@ type Props = {
 };
 
 type ViewKey = "all" | "open" | "ready" | "out" | "auth" | "delivered";
-type SortKey = "orderNumber" | "patient" | "facility" | "stage" | "csr" | "driver" | "discharge" | "orderDate";
+type SortKey = "orderNumber" | "patient" | "facility" | "csr" | "driver" | "discharge" | "orderDate";
 type SortDir = "asc" | "desc";
 
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
@@ -122,17 +120,13 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const [orders, setOrders] = useState<OrderShape[]>(initialOrders);
   const [view, setView] = useState<ViewKey>(startView);
   const [search, setSearch] = useState("");
-  const [insuranceFilter, setInsuranceFilter] = useState("");
+  // Brent 2026-06: filter set trimmed to the four Brent asked for —
+  // Authorization Status, Pending Document Actions, Order Status (verification),
+  // and Delivery Status. Insurance / deductible / companies / type filters were
+  // removed; reach them via search or the form if needed.
   const [authFilter, setAuthFilter] = useState("");
-  const [deductibleFilter, setDeductibleFilter] = useState("");
-  const [companyFilter, setCompanyFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  // Brent 2026-06: Order Status (verification outcome) filter. Empty = none.
-  const [verificationFilter, setVerificationFilter] = useState("");
-  // Brent 2026-06: Pending Document Actions single-select filter — matches
-  // orders whose pendingDocuments[] contains the selected key.
   const [pendingDocFilter, setPendingDocFilter] = useState("");
-  // Brent 2026-06: Delivery Status (OutcomeStatus) filter.
+  const [verificationFilter, setVerificationFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState<OrderShape | null>(null);
   const [creating, setCreating] = useState(initialNew);
@@ -161,14 +155,14 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       sortOrders(
         filterOrders(
           orders, view, search,
-          { insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, verificationFilter, pendingDocFilter, statusFilter, dateRange },
+          { authFilter, pendingDocFilter, verificationFilter, statusFilter, dateRange },
         ),
         sort,
       ),
-    [orders, view, search, insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, verificationFilter, pendingDocFilter, statusFilter, dateRange, sort],
+    [orders, view, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, dateRange, sort],
   );
   const hasFieldFilter =
-    insuranceFilter !== "" || authFilter !== "" || deductibleFilter !== "" || companyFilter !== "" || typeFilter !== "" || verificationFilter !== "" || pendingDocFilter !== "" || statusFilter !== "" || datePreset !== "all";
+    authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || datePreset !== "all";
   const counts = useMemo(() => {
     const m: Record<ViewKey, number> = {
       all: orders.length,
@@ -228,16 +222,12 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               `${filtered.length} record${filtered.length === 1 ? "" : "s"}`,
             ];
             if (dateRange) chips.push(`Order Date ${dateRange.from} → ${dateRange.to}`);
-            if (insuranceFilter) chips.push(`Insurance ${insuranceFilter}`);
-            if (authFilter) chips.push(`Auth ${authFilter}`);
-            if (deductibleFilter) chips.push(`Deductible ${deductibleFilter}`);
-            if (companyFilter) chips.push(`Company ${companyFilter}`);
-            if (typeFilter) chips.push(`Type ${typeFilter}`);
-            if (verificationFilter) chips.push(`Order Status ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
+            if (authFilter) chips.push(`Auth ${AUTH_LABELS[authFilter as keyof typeof AUTH_LABELS] ?? authFilter}`);
             if (pendingDocFilter) {
               const docLabel = PENDING_DOCUMENT_OPTIONS.find((d) => d.key === pendingDocFilter)?.label ?? pendingDocFilter;
               chips.push(`Pending Doc ${docLabel}`);
             }
+            if (verificationFilter) chips.push(`Order Status ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
             if (statusFilter) chips.push(`Delivery ${STATUS_LABELS[statusFilter as OutcomeStatus]}`);
             if (search.trim()) chips.push(`Search “${search.trim()}”`);
             chips.push(`Printed ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`);
@@ -352,12 +342,6 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
         />
 
         <FilterSelect
-          value={insuranceFilter}
-          onChange={setInsuranceFilter}
-          placeholder="All insurance"
-          options={sortByLabel(lookups.insurance.map((i) => ({ value: i.key, label: i.label })))}
-        />
-        <FilterSelect
           value={authFilter}
           onChange={setAuthFilter}
           placeholder="All auth"
@@ -373,46 +357,21 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           options={sortByLabel(PENDING_DOCUMENT_OPTIONS.map((d) => ({ value: d.key, label: d.label })))}
         />
         <FilterSelect
-          value={statusFilter}
-          onChange={setStatusFilter}
-          placeholder="All delivery status"
-          options={sortByLabel(DELIVERY_STATUS_PICKER_VALUES.map((k) => ({
-            value: k,
-            label: STATUS_LABELS[k],
-          })))}
-        />
-        <FilterSelect
-          value={deductibleFilter}
-          onChange={setDeductibleFilter}
-          placeholder="All deductible"
-          options={sortByLabel([
-            { value: "MET", label: "Met" },
-            { value: "NOT_MET", label: "Not Met" },
-            { value: "NA", label: "N/A" },
-          ])}
-        />
-        <FilterSelect
-          value={companyFilter}
-          onChange={setCompanyFilter}
-          placeholder="All companies"
-          options={sortByLabel(lookups.companies.map((c) => ({ value: c.key, label: c.label })))}
-        />
-        <FilterSelect
-          value={typeFilter}
-          onChange={setTypeFilter}
-          placeholder="All types"
-          options={sortByLabel((Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[]).map((k) => ({
-            value: k,
-            label: WORK_ORDER_TYPE_LABELS[k],
-          })))}
-        />
-        <FilterSelect
           value={verificationFilter}
           onChange={setVerificationFilter}
           placeholder="All order status"
           options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as Array<keyof typeof VERIFICATION_STATUS_LABELS>).map((k) => ({
             value: k,
             label: VERIFICATION_STATUS_LABELS[k],
+          })))}
+        />
+        <FilterSelect
+          value={statusFilter}
+          onChange={setStatusFilter}
+          placeholder="All delivery status"
+          options={sortByLabel(DELIVERY_STATUS_PICKER_VALUES.map((k) => ({
+            value: k,
+            label: STATUS_LABELS[k],
           })))}
         />
         <FilterSelect
@@ -451,13 +410,9 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           <button
             type="button"
             onClick={() => {
-              setInsuranceFilter("");
               setAuthFilter("");
-              setDeductibleFilter("");
-              setCompanyFilter("");
-              setTypeFilter("");
-              setVerificationFilter("");
               setPendingDocFilter("");
+              setVerificationFilter("");
               setStatusFilter("");
               setDatePreset("all");
               setDateFrom("");
@@ -501,19 +456,18 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
         </div>
         <div className="hidden md:block" style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
-            {/* Column order is intentional: identity → who → where → when
-                (both dates together) → status → owners (both people together).
-                Dates sit next to each other so the user can scan urgency
-                without jumping across the row. */}
+            {/* Brent 2026-06: Stage column removed — derived lifecycle was
+                duplicative once "Order Status" and "Delivery Status" became
+                manual fields. Work-order-type pill moved into the Order # cell
+                so the row still shows non-DELIVERY types at a glance. */}
             <colgroup>
-              <col style={{ width: 130 }} />
-              <col style={{ width: "18%" }} />
+              <col style={{ width: 150 }} />
+              <col style={{ width: "20%" }} />
               <col style={{ width: "20%" }} />
               <col style={{ width: 110 }} />
-              <col style={{ width: 130 }} />
-              <col style={{ width: 150 }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "12%" }} />
+              <col style={{ width: 170 }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "14%" }} />
             </colgroup>
             <thead>
               <tr style={{ background: "#f6f9fc", borderBottom: "1px solid #e5edf5" }}>
@@ -522,7 +476,6 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
                 <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
                 <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Scheduled Discharge Date</Th>
-                <Th sortKey="stage" sort={sort} onSort={toggleSort}>Stage</Th>
                 <Th sortKey="csr" sort={sort} onSort={toggleSort}>CSR</Th>
                 <Th sortKey="driver" sort={sort} onSort={toggleSort}>Driver</Th>
               </tr>
@@ -530,7 +483,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
+                  <td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
                     No orders in this view.
                   </td>
                 </tr>
@@ -568,7 +521,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
 }
 
 function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
-  const { dcInfo, stageColor, authAge, showAuthAge, dcBlocker } = deriveOrderDisplay(order);
+  const { dcInfo, dcBlocker } = deriveOrderDisplay(order);
 
   return (
     <tr
@@ -584,18 +537,27 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
     >
       {/* Cell order mirrors the <colgroup>/<thead> contract above:
           Order # → Patient → Facility → Order Date → Scheduled Discharge Date →
-          Stage → CSR → Dispatcher. Don't reorder one without the other two. */}
+          CSR → Driver. Don't reorder one without the other two. */}
       <Td>
-        <div
-          style={{
-            fontFamily: "SourceCodePro, ui-monospace, SFMono-Regular, monospace",
-            fontSize: 12,
-            color: "#273951",
-            fontFeatureSettings: '"tnum"',
-            whiteSpace: "nowrap",
-          }}
-        >
-          {order.orderNumber}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span
+            style={{
+              fontFamily: "SourceCodePro, ui-monospace, SFMono-Regular, monospace",
+              fontSize: 12,
+              color: "#273951",
+              fontFeatureSettings: '"tnum"',
+              whiteSpace: "nowrap",
+            }}
+          >
+            {order.orderNumber}
+          </span>
+          {order.workOrderType !== "DELIVERY" && (
+            <Pill
+              label={WORK_ORDER_TYPE_LABELS[order.workOrderType]}
+              bg={WORK_ORDER_TYPE_COLORS[order.workOrderType].bg}
+              color={WORK_ORDER_TYPE_COLORS[order.workOrderType].color}
+            />
+          )}
         </div>
       </Td>
       <Td>
@@ -645,24 +607,6 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
         )}
       </Td>
       <Td>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-          <Pill label={STAGE_LABELS[order.stage]} bg={stageColor.bg} color={stageColor.color} />
-          {order.workOrderType !== "DELIVERY" && (
-            <Pill
-              label={WORK_ORDER_TYPE_LABELS[order.workOrderType]}
-              bg={WORK_ORDER_TYPE_COLORS[order.workOrderType].bg}
-              color={WORK_ORDER_TYPE_COLORS[order.workOrderType].color}
-            />
-          )}
-          {mounted && showAuthAge && authAge !== null && (
-            <>
-              <span style={{ color: "#b03238", fontSize: 10, fontWeight: 500 }}>·</span>
-              <AuthAgePill status={order.authStatus} age={authAge} />
-            </>
-          )}
-        </span>
-      </Td>
-      <Td>
         {order.csrName ? (
           <span
             style={{
@@ -688,7 +632,7 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
 }
 
 function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean; onClick: () => void }) {
-  const { dcInfo, stageColor, authAge, showAuthAge, dcBlocker } = deriveOrderDisplay(order);
+  const { dcInfo, dcBlocker } = deriveOrderDisplay(order);
   return (
     <button
       type="button"
@@ -714,16 +658,17 @@ function Card({ order, mounted, onClick }: { order: OrderShape; mounted: boolean
           {order.orderNumber}
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Pill label={STAGE_LABELS[order.stage]} bg={stageColor.bg} color={stageColor.color} />
+          <Pill
+            label={STATUS_LABELS[order.status]}
+            bg={STATUS_COLORS[order.status].bg}
+            color={STATUS_COLORS[order.status].color}
+          />
           {order.workOrderType !== "DELIVERY" && (
             <Pill
               label={WORK_ORDER_TYPE_LABELS[order.workOrderType]}
               bg={WORK_ORDER_TYPE_COLORS[order.workOrderType].bg}
               color={WORK_ORDER_TYPE_COLORS[order.workOrderType].color}
             />
-          )}
-          {mounted && showAuthAge && authAge !== null && (
-            <AuthAgePill status={order.authStatus} age={authAge} />
           )}
         </span>
       </div>
@@ -767,9 +712,8 @@ function filterOrders(
   view: ViewKey,
   search: string,
   fields: {
-    insuranceFilter: string; authFilter: string; deductibleFilter: string;
-    companyFilter: string; typeFilter: string; verificationFilter: string;
-    pendingDocFilter: string; statusFilter: string;
+    authFilter: string; pendingDocFilter: string;
+    verificationFilter: string; statusFilter: string;
     dateRange: { from: string; to: string } | null;
   },
 ) {
@@ -782,24 +726,8 @@ function filterOrders(
   );
   else if (view === "delivered") list = list.filter((o) => o.stage === "DELIVERED");
 
-  if (fields.insuranceFilter) {
-    list = list.filter(
-      (o) =>
-        o.primaryInsuranceKey === fields.insuranceFilter ||
-        o.secondaryInsuranceKey === fields.insuranceFilter,
-    );
-  }
   if (fields.authFilter) {
     list = list.filter((o) => o.authStatus === fields.authFilter);
-  }
-  if (fields.deductibleFilter) {
-    list = list.filter((o) => o.deductibleStatus === fields.deductibleFilter);
-  }
-  if (fields.companyFilter) {
-    list = list.filter((o) => o.fulfillmentCompanies.includes(fields.companyFilter));
-  }
-  if (fields.typeFilter) {
-    list = list.filter((o) => o.workOrderType === fields.typeFilter);
   }
   if (fields.verificationFilter) {
     list = list.filter((o) => o.verificationStatus === fields.verificationFilter);
@@ -844,7 +772,6 @@ function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): O
       case "orderDate":   return new Date(o.createdAt).getTime();
       case "patient": return o.patientDisplay.toLowerCase();
       case "facility": return (o.facilityName ?? "").toLowerCase();
-      case "stage": return o.stage;
       case "csr": return (o.csrName ?? "").toLowerCase();
       case "driver": {
         // Per-item drivers. Single shared name sorts naturally; mixed orders
@@ -949,27 +876,32 @@ function formatDc(iso: string | null): { dateLabel: string; urgency: DcUrgency }
 }
 
 function exportCsv(rows: OrderShape[]): void {
-  // Column order mirrors the on-screen table so users see the same row layout
-  // whether they're scanning live, printed, or opened in Excel.
-  // Extra columns (Auth, Insurance, Companies, Items) tail after the visible
-  // ones — they don't show in the table but are useful in spreadsheet form.
+  // Column order mirrors the on-screen table: identity → patient → facility →
+  // dates → people. Extra columns (Auth, Order/Delivery status, Companies,
+  // Items) tail after the visible ones for spreadsheet workflows.
   const header = [
-    "Order #", "Patient", "Facility", "Order Date", "Discharge",
-    "Stage", "CSR", "Driver(s)",
-    "Authorization Status", "Primary Insurance", "Companies", "Items",
+    "Order #", "Type", "Patient", "Facility", "Order Date", "Scheduled Discharge Date",
+    "CSR", "Driver(s)",
+    "Authorization Status", "Pending Document Actions",
+    "Order Status", "Delivery Status",
+    "Companies", "Items",
   ];
   const data = rows.map((o) => [
     o.orderNumber,
+    WORK_ORDER_TYPE_LABELS[o.workOrderType],
     o.patientDisplay,
     o.facilityName ?? "",
     new Date(o.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" }),
     o.dischargeDate ? new Date(o.dischargeDate).toLocaleDateString("en-US", { timeZone: "UTC" }) : "",
-    STAGE_LABELS[o.stage],
     o.csrName ?? "",
     // Per-item driver names, deduped — joined as "; " so Excel sees one cell.
     Array.from(new Set(o.items.map((it) => it.driverName).filter((n): n is string => !!n))).join("; "),
     AUTH_LABELS[o.authStatus],
-    o.primaryInsuranceKey ?? "",
+    o.pendingDocuments
+      .map((k) => PENDING_DOCUMENT_OPTIONS.find((d) => d.key === k)?.label ?? k)
+      .join("; "),
+    o.verificationStatus ? VERIFICATION_STATUS_LABELS[o.verificationStatus] : "",
+    STATUS_LABELS[o.status],
     o.fulfillmentCompanies.join("; "),
     o.items.map((it) => `${it.abbreviation || it.name}${it.quantity > 1 ? ` x${it.quantity}` : ""}`).join("; "),
   ]);
@@ -981,7 +913,8 @@ function computeDcBlocker(
   urgency: DcUrgency,
 ): { label: string; tooltip: string } | null {
   if (urgency !== "urgent" && urgency !== "overdue") return null;
-  if (order.stage === "DELIVERED" || order.stage === "CANCELLED" || order.stage === "OUT_FOR_DELIVERY") return null;
+  // Order is already wrapped up / actively moving — no blocker chip needed.
+  if (order.status === "DELIVERED" || order.status === "CANCELLED" || order.status === "OUT_FOR_DELIVERY") return null;
   if (order.authStatus !== "NOT_REQ" && order.authStatus !== "APPROVED") {
     return { label: "auth pending", tooltip: `Discharge is imminent and auth is ${AUTH_LABELS[order.authStatus]}.` };
   }
@@ -990,25 +923,10 @@ function computeDcBlocker(
 
 function deriveOrderDisplay(order: OrderShape) {
   const dcInfo = formatDc(order.dischargeDate);
-  const authAge = authAgingDays(order.authStatus, order.authSubmittedAt);
   return {
     dcInfo,
-    stageColor: STAGE_COLORS[order.stage],
-    authAge,
-    showAuthAge: authAge !== null && authAge > 5,
     dcBlocker: computeDcBlocker(order, dcInfo.urgency),
   };
-}
-
-function AuthAgePill({ status, age }: { status: OrderShape["authStatus"]; age: number }) {
-  return (
-    <span
-      title={`Auth ${AUTH_LABELS[status]} for ${age}d`}
-      style={{ color: "#b03238", fontSize: 10, fontWeight: 500 }}
-    >
-      auth {age}d
-    </span>
-  );
 }
 
 function BlockerChip({ blocker }: { blocker: { label: string; tooltip: string } }) {
