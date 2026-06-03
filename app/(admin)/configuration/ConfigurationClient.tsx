@@ -84,7 +84,7 @@ export default function ConfigurationClient({ defs }: Props) {
             className="text-[26px] leading-tight"
             style={{ color: "#061b31", fontWeight: 300, letterSpacing: "-0.26px" }}
           >
-            Configuration
+            Dropdown Selections
           </h1>
           <p className="mt-1 text-[14px]" style={{ color: "#64748d", fontWeight: 300 }}>
             Manage the lookup data — facilities, equipment, insurance, and the rest of the dropdowns the tracker uses.

@@ -11,8 +11,6 @@ import {
   LifeBuoy,
   ListChecks,
   BarChart3,
-  CalendarDays,
-  Package,
   Menu,
   X,
 } from "lucide-react";
@@ -33,18 +31,17 @@ type NavItem = {
   roles: UserRole[];
 };
 
-// `driver` + `dispatcher` get the same nav visibility until commit B drops the
-// legacy role. New roles get added here, not branched on per-route.
+// 2026-06: Schedule + Inventory hidden from nav per Brent — the routes
+// still resolve if someone has the URL; just not surfaced. Configuration
+// renamed to "Dropdown Selections" since that's all it manages.
 const NAV_ITEMS: NavItem[] = [
-  { label: "Tracker",       href: "/tracker",       icon: <ListChecks size={18} />,         roles: ["supplier", "driver", "csr"] },
-  { label: "Schedule",      href: "/schedule",      icon: <CalendarDays size={18} />,       roles: ["supplier", "driver"] },
-  { label: "Reporting",     href: "/reporting",     icon: <BarChart3 size={18} />,          roles: ["supplier"] },
-  { label: "Inventory",     href: "/inventory",     icon: <Package size={18} />,            roles: ["supplier", "driver"] },
-  { label: "Configuration", href: "/configuration", icon: <SlidersHorizontal size={18} />,  roles: ["supplier"] },
-  { label: "Users",         href: "/users",         icon: <Users size={18} />,              roles: ["supplier"] },
-  { label: "Audit Log",     href: "/audit-log",     icon: <ClipboardList size={18} />,      roles: ["supplier"] },
-  { label: "Support",       href: "/support",       icon: <LifeBuoy size={18} />,           roles: ["supplier", "driver", "csr"] },
-  { label: "Account",       href: "/account",       icon: <ShieldCheck size={18} />,        roles: ["supplier", "driver", "csr"] },
+  { label: "Tracker",            href: "/tracker",       icon: <ListChecks size={18} />,         roles: ["supplier", "driver", "csr"] },
+  { label: "Reporting",          href: "/reporting",     icon: <BarChart3 size={18} />,          roles: ["supplier"] },
+  { label: "Dropdown Selections", href: "/configuration", icon: <SlidersHorizontal size={18} />, roles: ["supplier"] },
+  { label: "Users",              href: "/users",         icon: <Users size={18} />,              roles: ["supplier"] },
+  { label: "Audit Log",          href: "/audit-log",     icon: <ClipboardList size={18} />,      roles: ["supplier"] },
+  { label: "Support",            href: "/support",       icon: <LifeBuoy size={18} />,           roles: ["supplier", "driver", "csr"] },
+  { label: "Account",            href: "/account",       icon: <ShieldCheck size={18} />,        roles: ["supplier", "driver", "csr"] },
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {
