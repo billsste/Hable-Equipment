@@ -247,9 +247,16 @@ enum HandlerType {
   FACILITY
 }
 
+// Brent 2026-06 follow-up: the "Delivery Status" picker shows TBD (ACTIVE),
+// On Hold, Out for Delivery, Door Tag, Cancelled, Delivered. OUT_FOR_DELIVERY
+// + DOOR_TAG are added here as picker-selectable. The legacy LOOSE_ENDS /
+// TRANSFERRED / REJECTED / WRITE_OFF values are kept for back-compat on any
+// existing row that still uses them, but the picker filters them out.
 enum OutcomeStatus {
   ACTIVE
   ON_HOLD
+  OUT_FOR_DELIVERY
+  DOOR_TAG
   LOOSE_ENDS
   TRANSFERRED
   REJECTED

@@ -118,18 +118,32 @@ export function deriveStage(input: {
   return input.current === "INTAKE_OFF_RIP" ? "INTAKE_OFF_RIP" : "INTAKE_VERIFICATION";
 }
 
+// "Still moving toward delivery" — these three statuses mean the order is
+// in flight (TBD = default, OUT_FOR_DELIVERY = driver out, DOOR_TAG = attempted).
+// DELIVERED is intentionally NOT in this set: it's terminal (success).
+const IN_FLIGHT_STATUSES: ReadonlyArray<OutcomeStatus> = [
+  "ACTIVE", "OUT_FOR_DELIVERY", "DOOR_TAG",
+];
+
+// Terminal = end-state, won't progress further. DELIVERED (success) +
+// cancellation-family (CANCELLED / LOOSE_ENDS / TRANSFERRED / REJECTED /
+// WRITE_OFF). ON_HOLD is paused, not terminal — it can come off hold.
 export function isTerminalStatus(s: OutcomeStatus): boolean {
-  return s !== "ACTIVE" && s !== "ON_HOLD";
+  return !IN_FLIGHT_STATUSES.includes(s) && s !== "ON_HOLD";
 }
 
-// Statuses that block dispatcher assignment (not actively in flight).
+// Blocks driver assignment. Anything not in-flight and not DELIVERED is a
+// hold/cancel state — the order shouldn't pick up a new driver. DELIVERED
+// is excluded so the historical assignment stays editable on a delivered row.
 export function isBlockingStatus(s: OutcomeStatus): boolean {
-  return s !== "ACTIVE" && s !== "DELIVERED";
+  return !IN_FLIGHT_STATUSES.includes(s) && s !== "DELIVERED";
 }
 
-// Non-active statuses require a reason note.
+// Needs a reason note in the comments thread. Identical to the blocking set:
+// hold/cancel/transfer/etc. all want a written explanation; in-flight states
+// and DELIVERED don't.
 export function requiresReason(s: OutcomeStatus): boolean {
-  return s !== "ACTIVE" && s !== "DELIVERED";
+  return !IN_FLIGHT_STATUSES.includes(s) && s !== "DELIVERED";
 }
 
 export function authAgingDays(authStatus: AuthStatus, authSubmittedAt: string | null): number | null {
@@ -246,6 +260,8 @@ export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
 export const STATUS_LABELS: Record<OutcomeStatus, string> = {
   ACTIVE: "TBD",
   ON_HOLD: "On Hold",
+  OUT_FOR_DELIVERY: "Out for Delivery",
+  DOOR_TAG: "Door Tag",
   LOOSE_ENDS: "Loose Ends / On Call",
   TRANSFERRED: "Transferred",
   REJECTED: "Rejected",
@@ -254,15 +270,43 @@ export const STATUS_LABELS: Record<OutcomeStatus, string> = {
   WRITE_OFF: "Write Off",
 };
 
+// What the Delivery Status picker exposes. Legacy values (LOOSE_ENDS /
+// TRANSFERRED / REJECTED / WRITE_OFF) are STILL valid enum members for
+// back-compat on rows that already use them; they just don't appear in the
+// new-order picker. The picker auto-includes the row's current value if
+// it's outside this set so a user editing a legacy row doesn't see "blank".
+export const DELIVERY_STATUS_PICKER_VALUES: ReadonlyArray<OutcomeStatus> = [
+  "ACTIVE",            // TBD
+  "ON_HOLD",
+  "OUT_FOR_DELIVERY",
+  "DOOR_TAG",
+  "CANCELLED",
+  "DELIVERED",
+];
+
+// Authorization Status picker per Brent 2026-06: just these 4. Legacy
+// values (REQUIRED / PENDING_SIGNATURE / UNDER_REVIEW / APPROVED / DENIED)
+// stay in the AuthStatus enum + AUTH_LABELS so existing rows still render,
+// but the picker filters them out the same way DELIVERY_STATUS_PICKER_VALUES
+// does for delivery status.
+export const AUTH_PICKER_VALUES: ReadonlyArray<AuthStatus> = [
+  "NOT_REQ",
+  "READY_TO_SUBMIT",
+  "PENDING_DOCUMENTS",
+  "SUBMITTED",
+];
+
 export const STATUS_COLORS: Record<OutcomeStatus, { bg: string; color: string }> = {
-  ACTIVE:      { bg: "rgba(83,58,253,0.10)",   color: "#4434d4" },
-  ON_HOLD:     { bg: "rgba(245,158,11,0.16)",  color: "#9b6829" },
-  LOOSE_ENDS:  { bg: "rgba(245,158,11,0.18)",  color: "#7a5320" },
-  TRANSFERRED: { bg: "rgba(139,92,246,0.16)",  color: "#6d3fbf" },
-  REJECTED:    { bg: "rgba(229,72,77,0.14)",   color: "#b03238" },
-  CANCELLED:   { bg: "rgba(100,116,141,0.14)", color: "#64748d" },
-  DELIVERED:   { bg: "rgba(21,190,83,0.16)",   color: "#108c3d" },
-  WRITE_OFF:   { bg: "rgba(100,116,141,0.18)", color: "#475569" },
+  ACTIVE:           { bg: "rgba(83,58,253,0.10)",   color: "#4434d4" },
+  ON_HOLD:          { bg: "rgba(245,158,11,0.16)",  color: "#9b6829" },
+  OUT_FOR_DELIVERY: { bg: "rgba(155,104,41,0.18)",  color: "#7a5320" },
+  DOOR_TAG:         { bg: "rgba(139,92,246,0.16)",  color: "#6d3fbf" },
+  LOOSE_ENDS:       { bg: "rgba(245,158,11,0.18)",  color: "#7a5320" },
+  TRANSFERRED:      { bg: "rgba(139,92,246,0.16)",  color: "#6d3fbf" },
+  REJECTED:         { bg: "rgba(229,72,77,0.14)",   color: "#b03238" },
+  CANCELLED:        { bg: "rgba(100,116,141,0.14)", color: "#64748d" },
+  DELIVERED:        { bg: "rgba(21,190,83,0.16)",   color: "#108c3d" },
+  WRITE_OFF:        { bg: "rgba(100,116,141,0.18)", color: "#475569" },
 };
 
 // Action vocabulary for OrderEvent and AuditEntry rows. These strings are

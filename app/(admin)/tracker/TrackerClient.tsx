@@ -4,8 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AUTH_IN_FLIGHT,
   AUTH_LABELS,
+  AUTH_PICKER_VALUES,
+  DELIVERY_STATUS_PICKER_VALUES,
+  PENDING_DOCUMENT_OPTIONS,
   STAGE_COLORS,
   STAGE_LABELS,
+  STATUS_LABELS,
   VERIFICATION_STATUS_LABELS,
   WORK_ORDER_TYPE_COLORS,
   WORK_ORDER_TYPE_LABELS,
@@ -13,7 +17,7 @@ import {
   dcUrgency,
   type OrderShape,
 } from "@/lib/order-types";
-import type { WorkOrderType } from "@prisma/client";
+import type { OutcomeStatus, WorkOrderType } from "@prisma/client";
 import OrderForm from "./OrderForm";
 import { Download, Plus, Printer } from "lucide-react";
 import { Muted, Pill, SearchInput, Td, Th, hexWithAlpha, sortByLabel } from "@/components/admin-ui";
@@ -123,8 +127,13 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const [deductibleFilter, setDeductibleFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  // Brent 2026-06: Verification Status filter. Empty string = no filter.
+  // Brent 2026-06: Order Status (verification outcome) filter. Empty = none.
   const [verificationFilter, setVerificationFilter] = useState("");
+  // Brent 2026-06: Pending Document Actions single-select filter — matches
+  // orders whose pendingDocuments[] contains the selected key.
+  const [pendingDocFilter, setPendingDocFilter] = useState("");
+  // Brent 2026-06: Delivery Status (OutcomeStatus) filter.
+  const [statusFilter, setStatusFilter] = useState("");
   const [editing, setEditing] = useState<OrderShape | null>(null);
   const [creating, setCreating] = useState(initialNew);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "discharge", dir: "asc" });
@@ -152,14 +161,14 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       sortOrders(
         filterOrders(
           orders, view, search,
-          { insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, verificationFilter, dateRange },
+          { insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, verificationFilter, pendingDocFilter, statusFilter, dateRange },
         ),
         sort,
       ),
-    [orders, view, search, insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, verificationFilter, dateRange, sort],
+    [orders, view, search, insuranceFilter, authFilter, deductibleFilter, companyFilter, typeFilter, verificationFilter, pendingDocFilter, statusFilter, dateRange, sort],
   );
   const hasFieldFilter =
-    insuranceFilter !== "" || authFilter !== "" || deductibleFilter !== "" || companyFilter !== "" || typeFilter !== "" || verificationFilter !== "" || datePreset !== "all";
+    insuranceFilter !== "" || authFilter !== "" || deductibleFilter !== "" || companyFilter !== "" || typeFilter !== "" || verificationFilter !== "" || pendingDocFilter !== "" || statusFilter !== "" || datePreset !== "all";
   const counts = useMemo(() => {
     const m: Record<ViewKey, number> = {
       all: orders.length,
@@ -224,7 +233,12 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             if (deductibleFilter) chips.push(`Deductible ${deductibleFilter}`);
             if (companyFilter) chips.push(`Company ${companyFilter}`);
             if (typeFilter) chips.push(`Type ${typeFilter}`);
-            if (verificationFilter) chips.push(`Verification ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
+            if (verificationFilter) chips.push(`Order Status ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
+            if (pendingDocFilter) {
+              const docLabel = PENDING_DOCUMENT_OPTIONS.find((d) => d.key === pendingDocFilter)?.label ?? pendingDocFilter;
+              chips.push(`Pending Doc ${docLabel}`);
+            }
+            if (statusFilter) chips.push(`Delivery ${STATUS_LABELS[statusFilter as OutcomeStatus]}`);
             if (search.trim()) chips.push(`Search “${search.trim()}”`);
             chips.push(`Printed ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`);
             return (
@@ -347,9 +361,24 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           value={authFilter}
           onChange={setAuthFilter}
           placeholder="All auth"
-          options={sortByLabel((Object.keys(AUTH_LABELS) as Array<keyof typeof AUTH_LABELS>).map((k) => ({
+          options={sortByLabel(AUTH_PICKER_VALUES.map((k) => ({
             value: k,
             label: AUTH_LABELS[k],
+          })))}
+        />
+        <FilterSelect
+          value={pendingDocFilter}
+          onChange={setPendingDocFilter}
+          placeholder="All pending docs"
+          options={sortByLabel(PENDING_DOCUMENT_OPTIONS.map((d) => ({ value: d.key, label: d.label })))}
+        />
+        <FilterSelect
+          value={statusFilter}
+          onChange={setStatusFilter}
+          placeholder="All delivery status"
+          options={sortByLabel(DELIVERY_STATUS_PICKER_VALUES.map((k) => ({
+            value: k,
+            label: STATUS_LABELS[k],
           })))}
         />
         <FilterSelect
@@ -380,7 +409,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
         <FilterSelect
           value={verificationFilter}
           onChange={setVerificationFilter}
-          placeholder="All verification"
+          placeholder="All order status"
           options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as Array<keyof typeof VERIFICATION_STATUS_LABELS>).map((k) => ({
             value: k,
             label: VERIFICATION_STATUS_LABELS[k],
@@ -428,6 +457,8 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               setCompanyFilter("");
               setTypeFilter("");
               setVerificationFilter("");
+              setPendingDocFilter("");
+              setStatusFilter("");
               setDatePreset("all");
               setDateFrom("");
               setDateTo("");
@@ -490,7 +521,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
                 <Th sortKey="patient" sort={sort} onSort={toggleSort}>Patient</Th>
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
                 <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
-                <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Discharge Date</Th>
+                <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Scheduled Discharge Date</Th>
                 <Th sortKey="stage" sort={sort} onSort={toggleSort}>Stage</Th>
                 <Th sortKey="csr" sort={sort} onSort={toggleSort}>CSR</Th>
                 <Th sortKey="driver" sort={sort} onSort={toggleSort}>Driver</Th>
@@ -552,7 +583,7 @@ function Row({ order, mounted, onClick }: { order: OrderShape; mounted: boolean;
       onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
     >
       {/* Cell order mirrors the <colgroup>/<thead> contract above:
-          Order # → Patient → Facility → Order Date → Discharge Date →
+          Order # → Patient → Facility → Order Date → Scheduled Discharge Date →
           Stage → CSR → Dispatcher. Don't reorder one without the other two. */}
       <Td>
         <div
@@ -738,6 +769,7 @@ function filterOrders(
   fields: {
     insuranceFilter: string; authFilter: string; deductibleFilter: string;
     companyFilter: string; typeFilter: string; verificationFilter: string;
+    pendingDocFilter: string; statusFilter: string;
     dateRange: { from: string; to: string } | null;
   },
 ) {
@@ -771,6 +803,12 @@ function filterOrders(
   }
   if (fields.verificationFilter) {
     list = list.filter((o) => o.verificationStatus === fields.verificationFilter);
+  }
+  if (fields.pendingDocFilter) {
+    list = list.filter((o) => o.pendingDocuments.includes(fields.pendingDocFilter));
+  }
+  if (fields.statusFilter) {
+    list = list.filter((o) => o.status === fields.statusFilter);
   }
   if (fields.dateRange) {
     // Compare the YYYY-MM-DD slice in UTC so the inclusive boundary matches

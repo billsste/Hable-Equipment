@@ -28,7 +28,8 @@ const VALID_WORK_ORDER_TYPES = Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderT
 import type { AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, Prisma, WorkOrderType } from "@prisma/client";
 
 const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
-  "ACTIVE", "ON_HOLD", "LOOSE_ENDS", "TRANSFERRED", "REJECTED", "CANCELLED", "DELIVERED", "WRITE_OFF",
+  "ACTIVE", "ON_HOLD", "OUT_FOR_DELIVERY", "DOOR_TAG", "LOOSE_ENDS", "TRANSFERRED",
+  "REJECTED", "CANCELLED", "DELIVERED", "WRITE_OFF",
 ];
 
 const ALLOWED_PATCH_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver"];
@@ -269,12 +270,37 @@ export async function PATCH(
       data.status = newStatus;
       nextStatus = newStatus;
 
-      if (newStatus === "DELIVERED") {
+      // Brent 2026-06: progress statuses (TBD/in-flight/out-for-delivery/door-tag/delivered)
+      // clear the cancelledAt stamp; everything else stamps it. OUT_FOR_DELIVERY
+      // and DOOR_TAG also stamp their workflow timestamps so the dashboard chips
+      // and stage derivation pick them up.
+      if (newStatus === "DELIVERED" || newStatus === "ACTIVE") {
         data.cancelledAt = null;
         nextCancelledAt = null;
-      } else if (newStatus === "ACTIVE") {
+      } else if (newStatus === "OUT_FOR_DELIVERY") {
         data.cancelledAt = null;
         nextCancelledAt = null;
+        if (!existing.outForDeliveryAt) {
+          data.outForDeliveryAt = now;
+          nextOutAt = now;
+        }
+        // Leaving DOOR_TAG → OUT_FOR_DELIVERY clears the door-tag stamp.
+        data.doorTaggedAt = null;
+        nextDoorTaggedAt = null;
+      } else if (newStatus === "DOOR_TAG") {
+        data.cancelledAt = null;
+        nextCancelledAt = null;
+        // Door tag implies the driver attempted delivery, so make sure the
+        // out-for-delivery stamp exists too (covers manual jumps that skip the
+        // "out_for_delivery" action handler below).
+        if (!existing.outForDeliveryAt) {
+          data.outForDeliveryAt = now;
+          nextOutAt = now;
+        }
+        if (!existing.doorTaggedAt) {
+          data.doorTaggedAt = now;
+          nextDoorTaggedAt = now;
+        }
       } else {
         data.cancelledAt = now;
         nextCancelledAt = now;

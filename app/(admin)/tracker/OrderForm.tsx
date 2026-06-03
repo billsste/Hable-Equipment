@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Loader2, AlertTriangle, Send, CheckCircle2, DoorClosed, Plus, Printer, Truck } from "lucide-react";
 import {
+  AUTH_LABELS,
+  AUTH_PICKER_VALUES,
+  DELIVERY_STATUS_PICKER_VALUES,
   PENDING_DOCUMENT_OPTIONS,
   STAGE_COLORS,
   STAGE_LABELS,
@@ -16,7 +19,7 @@ import {
   type OrderShape,
   type VerificationStatus,
 } from "@/lib/order-types";
-import type { OutcomeStatus, WorkOrderType } from "@prisma/client";
+import type { AuthStatus, OutcomeStatus, WorkOrderType } from "@prisma/client";
 import { sortByLabel } from "@/components/admin-ui";
 import type { Lookups } from "./TrackerClient";
 import {
@@ -30,7 +33,6 @@ import {
   displayName,
 } from "./order-form-atoms";
 import {
-  AuthStatusSelect,
   ChipMulti,
   FacilitySelect,
   InsuranceSelect,
@@ -584,7 +586,7 @@ export default function OrderForm(props: Props) {
                   onChange={setCallReceivedDate}
                 />
                 <Input
-                  label="Discharge Date"
+                  label="Scheduled Discharge Date"
                   type="date"
                   value={dischargeDate}
                   onChange={setDischargeDate}
@@ -645,10 +647,16 @@ export default function OrderForm(props: Props) {
                   ]}
                 />
                 <div>
-                  <AuthStatusSelect
+                  <SearchSelect
+                    label="Authorization Status"
                     value={authStatus}
-                    from={initial?.authStatus ?? "NOT_REQ"}
-                    onChange={setAuthStatus}
+                    onChange={(v) => setAuthStatus((v ?? "NOT_REQ") as AuthStatus)}
+                    placeholder="Search…"
+                    options={sortByLabel(
+                      Array.from(
+                        new Set<AuthStatus>([...AUTH_PICKER_VALUES, authStatus]),
+                      ).map((k) => ({ value: k, label: AUTH_LABELS[k] })),
+                    )}
                   />
                   {signatureWarning && (
                     <div
@@ -697,7 +705,7 @@ export default function OrderForm(props: Props) {
                   documents the auth packet is missing. */}
               {authStatus === "PENDING_DOCUMENTS" && (
                 <div style={{ marginTop: 12 }}>
-                  <Label>Pending Documents</Label>
+                  <Label>Pending Document Actions</Label>
                   <ChipMulti
                     value={pendingDocuments}
                     onToggle={(key) =>
@@ -713,7 +721,7 @@ export default function OrderForm(props: Props) {
               {/* Brent 2026-06: manual outcome for the Verification step. */}
               <div style={{ marginTop: 12 }}>
                 <SegmentedSelect
-                  label="Verification Status"
+                  label="Order Status"
                   value={verificationStatus}
                   onChange={(v) => setVerificationStatus((v as VerificationStatus | null) ?? null)}
                   options={sortByLabel((Object.keys(VERIFICATION_STATUS_LABELS) as VerificationStatus[]).map((k) => ({
@@ -793,9 +801,16 @@ export default function OrderForm(props: Props) {
               </div>
 
               <SubHeader label="3 · Schedule" />
+              {/* Brent 2026-06: Stage 3 mirrors the dates entered in Stage 1
+                  (Order Intake) verbatim — same labels, read-only here so the
+                  driver sees exactly what the CSR captured. */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
                 <ReadonlyDate
-                  label="Discharge Date"
+                  label="Order Date"
+                  iso={isCreate ? (callReceivedDate || null) : (initial as OrderShape).callReceivedDate}
+                />
+                <ReadonlyDate
+                  label="Scheduled Discharge Date"
                   iso={isCreate ? (dischargeDate || null) : (initial as OrderShape).dischargeDate}
                 />
                 <ReadonlyDate
@@ -814,10 +829,11 @@ export default function OrderForm(props: Props) {
                     setStatus(next);
                     if (!requiresReason(next)) setStatusReason("");
                   }}
-                  options={sortByLabel((Object.keys(STATUS_LABELS) as OutcomeStatus[]).map((k) => ({
-                    value: k,
-                    label: STATUS_LABELS[k],
-                  })))}
+                  options={sortByLabel(
+                    Array.from(
+                      new Set<OutcomeStatus>([...DELIVERY_STATUS_PICKER_VALUES, status]),
+                    ).map((k) => ({ value: k, label: STATUS_LABELS[k] })),
+                  )}
                 />
                 {requiresReason(status) && (
                   <SearchSelect
@@ -1106,6 +1122,26 @@ function PerItemDrivers({
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {/* Brent 2026-06: explicit column header for the per-item assignment
+          table so the third column reads "Completed Date" (previously inferred
+          via aria-label only). Mirrors the grid template below. */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)",
+          gap: 8,
+          padding: "0 10px",
+          fontSize: 11,
+          fontWeight: 500,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          color: "#64748d",
+        }}
+      >
+        <span>Equipment</span>
+        <span>Driver</span>
+        <span>Completed Date</span>
+      </div>
       {items.map((it, idx) => {
         const eq = equipmentLookup.find((e) => e.id === it.equipmentId);
         const label = eq ? `${eq.name}${it.quantity > 1 ? ` ×${it.quantity}` : ""}` : `Unknown equipment (${it.equipmentId.slice(0, 8)})`;
