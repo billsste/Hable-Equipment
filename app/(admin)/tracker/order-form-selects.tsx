@@ -477,6 +477,10 @@ export function ChipMulti({
           setHighlight(0);
         }}
         onFocus={() => setOpen(true)}
+        // Clicking an already-focused input doesn't re-fire onFocus, so the
+        // popover wouldn't reopen after the first add. Mirror onFocus here so
+        // every click reopens reliably.
+        onClick={() => setOpen(true)}
         onKeyDown={onKeyDown}
         placeholder={placeholder ?? "Search to add…"}
         className="w-full px-3 py-2 text-[13px] outline-none"

@@ -717,8 +717,11 @@ export default function OrderForm(props: Props) {
                 )}
               </div>
 
-              {/* Fulfillment Companies capped so it doesn't sprawl the row. */}
-              <div style={{ marginTop: 12, maxWidth: 640 }}>
+              {/* Fulfillment Companies pinned to ~1/3 of the row width so
+                  the chip block matches the dropdowns above. Only 3 options
+                  exist (Action Medical / Care One / Christian Mobility), so
+                  a wider box wastes space. */}
+              <div style={{ marginTop: 12, maxWidth: 400 }}>
                 <Label>Fulfillment Companies</Label>
                 <ChipMulti
                   options={lookups.companies.map((c) => ({ key: c.key, label: c.label }))}
