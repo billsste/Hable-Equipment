@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldCheck, ShieldAlert, Copy, Check, AlertTriangle } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Copy, Check, AlertTriangle, Pencil } from "lucide-react";
 import { Pill } from "@/components/admin-ui";
 
 type Me = {
@@ -13,6 +13,8 @@ type Me = {
   mfaEnrolledAt: string | null;
   backupCodesRemaining: number;
 };
+
+type EditMode = "none" | "email" | "password";
 
 // One state value instead of (phase + setup + token + disableToken + backupCodes).
 // Every variant carries exactly the fields it needs, so impossible combinations
@@ -29,6 +31,73 @@ export default function AccountClient({ me: initialMe }: { me: Me }) {
   const [view, setView] = useState<MfaView>({ kind: "idle" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Profile edit state — only one editor open at a time so the page stays
+  // calm. Each form keeps its own draft + status message so a typo in
+  // password doesn't clobber an unrelated email edit.
+  const [editing, setEditing] = useState<EditMode>("none");
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailCurrentPwd, setEmailCurrentPwd] = useState("");
+  const [emailMsg, setEmailMsg] = useState<string | null>(null);
+  const [pwdCurrent, setPwdCurrent] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdConfirm, setPwdConfirm] = useState("");
+  const [pwdMsg, setPwdMsg] = useState<string | null>(null);
+  const [savedPing, setSavedPing] = useState<"email" | "password" | null>(null);
+
+  function openEmailEditor() {
+    setEditing("email");
+    setEmailDraft(me.email);
+    setEmailCurrentPwd("");
+    setEmailMsg(null);
+  }
+  function openPasswordEditor() {
+    setEditing("password");
+    setPwdCurrent("");
+    setPwdNew("");
+    setPwdConfirm("");
+    setPwdMsg(null);
+  }
+  function cancelProfileEdit() {
+    setEditing("none");
+    setEmailMsg(null);
+    setPwdMsg(null);
+  }
+
+  async function submitEmail() {
+    setEmailMsg(null); setBusy(true);
+    try {
+      const r = await fetch("/api/auth/change-email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ newEmail: emailDraft.trim(), currentPassword: emailCurrentPwd }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setEmailMsg(d.error ?? `Could not update email (HTTP ${r.status}).`); return; }
+      setMe({ ...me, email: d.email ?? emailDraft.trim() });
+      setEditing("none");
+      setSavedPing("email");
+      setTimeout(() => setSavedPing((s) => (s === "email" ? null : s)), 2000);
+    } finally { setBusy(false); }
+  }
+
+  async function submitPassword() {
+    setPwdMsg(null);
+    if (pwdNew !== pwdConfirm) { setPwdMsg("New passwords don't match."); return; }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ currentPassword: pwdCurrent, newPassword: pwdNew }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setPwdMsg(d.error ?? `Could not change password (HTTP ${r.status}).`); return; }
+      setEditing("none");
+      setPwdCurrent(""); setPwdNew(""); setPwdConfirm("");
+      setSavedPing("password");
+      setTimeout(() => setSavedPing((s) => (s === "password" ? null : s)), 2000);
+    } finally { setBusy(false); }
+  }
 
   async function startEnroll() {
     setErr(null); setBusy(true);
@@ -97,15 +166,108 @@ export default function AccountClient({ me: initialMe }: { me: Me }) {
         </p>
       </div>
 
-      {/* Profile card */}
+      {/* Profile card — Name + Role read-only, Email editable inline. */}
       <Card title="Profile">
         <Row label="Name" value={me.name} />
-        <Row label="Email" value={me.email} />
+        {editing === "email" ? (
+          <div style={{ padding: "12px 0", borderBottom: "1px solid #f6f9fc" }}>
+            <div style={{ fontSize: 12, color: "#64748d", marginBottom: 6 }}>New email</div>
+            <input
+              type="email"
+              value={emailDraft}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              autoFocus
+              placeholder="name@facility.org"
+              style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #e5edf5", borderRadius: 4, outline: "none", marginBottom: 8 }}
+            />
+            <div style={{ fontSize: 12, color: "#64748d", marginBottom: 6 }}>Current password (confirm it's you)</div>
+            <input
+              type="password"
+              value={emailCurrentPwd}
+              onChange={(e) => setEmailCurrentPwd(e.target.value)}
+              placeholder="Current password"
+              style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #e5edf5", borderRadius: 4, outline: "none", marginBottom: 8 }}
+            />
+            {emailMsg && <ErrorBanner>{emailMsg}</ErrorBanner>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <PrimaryButton onClick={submitEmail} disabled={busy || !emailDraft.trim() || !emailCurrentPwd}>
+                {busy ? "Saving..." : "Save email"}
+              </PrimaryButton>
+              <GhostButton onClick={cancelProfileEdit}>Cancel</GhostButton>
+            </div>
+          </div>
+        ) : (
+          <EditableRow
+            label="Email"
+            value={me.email}
+            savedPing={savedPing === "email"}
+            onEdit={openEmailEditor}
+          />
+        )}
         <Row label="Role" value={
           me.role === "supplier" ? "Administrator"
           : me.role === "driver" ? "Driver"
           : "Customer Service"
         } />
+      </Card>
+
+      {/* Password card — separate from Profile so the auth-credential editor
+          reads as its own concern, mirroring the MFA card below. */}
+      <Card
+        title="Password"
+        right={savedPing === "password" ? (
+          <Pill bg="rgba(21,190,83,0.14)" color="#108c3d"><Check size={12} /> Updated</Pill>
+        ) : undefined}
+      >
+        {editing === "password" ? (
+          <div>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "#64748d", marginBottom: 6 }}>Current password</div>
+                <input
+                  type="password"
+                  value={pwdCurrent}
+                  onChange={(e) => setPwdCurrent(e.target.value)}
+                  autoFocus
+                  style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #e5edf5", borderRadius: 4, outline: "none" }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#64748d", marginBottom: 6 }}>New password</div>
+                <input
+                  type="password"
+                  value={pwdNew}
+                  onChange={(e) => setPwdNew(e.target.value)}
+                  style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #e5edf5", borderRadius: 4, outline: "none" }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#64748d", marginBottom: 6 }}>Confirm new password</div>
+                <input
+                  type="password"
+                  value={pwdConfirm}
+                  onChange={(e) => setPwdConfirm(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && pwdCurrent && pwdNew && pwdConfirm) submitPassword(); }}
+                  style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #e5edf5", borderRadius: 4, outline: "none" }}
+                />
+              </div>
+            </div>
+            {pwdMsg && <div style={{ marginTop: 12 }}><ErrorBanner>{pwdMsg}</ErrorBanner></div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <PrimaryButton onClick={submitPassword} disabled={busy || !pwdCurrent || !pwdNew || !pwdConfirm}>
+                {busy ? "Saving..." : "Update password"}
+              </PrimaryButton>
+              <GhostButton onClick={cancelProfileEdit}>Cancel</GhostButton>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p style={{ fontSize: 13, color: "#475569", marginBottom: 12 }}>
+              Rotate your sign-in password. We&apos;ll ask for the current one to confirm it&apos;s you.
+            </p>
+            <GhostButton onClick={openPasswordEditor}>Change password</GhostButton>
+          </div>
+        )}
       </Card>
 
       {/* MFA card */}
@@ -279,6 +441,54 @@ function Row({ label, value }: { label: string; value: string }) {
     <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f6f9fc", fontSize: 13 }}>
       <span style={{ color: "#64748d" }}>{label}</span>
       <span style={{ color: "#273951", fontWeight: 500 }}>{value}</span>
+    </div>
+  );
+}
+
+// Same shape as Row, but with a hover-revealed Edit pencil and an optional
+// "Updated" ping that fades after the parent's timeout.
+function EditableRow({
+  label,
+  value,
+  savedPing,
+  onEdit,
+}: {
+  label: string;
+  value: string;
+  savedPing: boolean;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="group" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f6f9fc", fontSize: 13, gap: 12 }}>
+      <span style={{ color: "#64748d" }}>{label}</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#273951", fontWeight: 500, minWidth: 0 }}>
+        {savedPing && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#108c3d", fontSize: 11 }}>
+            <Check size={12} /> Updated
+          </span>
+        )}
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+        <button
+          type="button"
+          onClick={onEdit}
+          title={`Edit ${label}`}
+          className="opacity-0 group-hover:opacity-100"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "3px 8px",
+            fontSize: 11,
+            color: "#533afd",
+            background: "rgba(83,58,253,0.06)",
+            border: "1px solid rgba(83,58,253,0.18)",
+            borderRadius: 4,
+            transition: "opacity 120ms",
+          }}
+        >
+          <Pencil size={11} /> Edit
+        </button>
+      </span>
     </div>
   );
 }
