@@ -653,17 +653,15 @@ export default function OrderForm(props: Props) {
               </div>
 
               {/* Verification outcome row: Order Status anchors the left,
-                  Authorization Status sits in the middle, and Pending
-                  Document Actions appears immediately to its right the
-                  moment auth = Pending Documents. Grid collapses to 2-col
-                  otherwise so col 3 isn't a phantom slot. */}
+                  Authorization Status sits in the middle, Pending Document
+                  Actions reserves the right column. The third slot stays
+                  empty (but its width is held) until Auth = Pending
+                  Documents — keeps the row's column boundaries stable so
+                  picking Pending Docs doesn't shift the page layout. */}
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns:
-                    authStatus === "PENDING_DOCUMENTS"
-                      ? "repeat(3, minmax(0, 1fr))"
-                      : "repeat(2, minmax(0, 1fr))",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                   gap: 12,
                   marginTop: 12,
                   alignItems: "start",
@@ -701,7 +699,7 @@ export default function OrderForm(props: Props) {
                     </div>
                   )}
                 </div>
-                {authStatus === "PENDING_DOCUMENTS" && (
+                {authStatus === "PENDING_DOCUMENTS" ? (
                   <div>
                     <Label>Pending Document Actions</Label>
                     <ChipMulti
@@ -714,6 +712,8 @@ export default function OrderForm(props: Props) {
                       options={PENDING_DOCUMENT_OPTIONS.map((d) => ({ key: d.key, label: d.label }))}
                     />
                   </div>
+                ) : (
+                  <div />
                 )}
               </div>
 
