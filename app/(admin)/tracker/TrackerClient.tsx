@@ -13,6 +13,7 @@ import {
   WORK_ORDER_TYPE_COLORS,
   WORK_ORDER_TYPE_LABELS,
   dcUrgency,
+  isTerminalStatus,
   type OrderShape,
 } from "@/lib/order-types";
 import type { OutcomeStatus } from "@prisma/client";
@@ -60,20 +61,19 @@ type Props = {
   lookups: Lookups;
 };
 
-type ViewKey = "all" | "open" | "ready" | "out" | "auth" | "delivered";
+type ViewKey = "all" | "open" | "out" | "auth" | "delivered";
 type SortKey = "orderNumber" | "patient" | "facility" | "csr" | "driver" | "orderDate";
 type SortDir = "asc" | "desc";
 
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
-  { key: "open",      label: "Open",             description: "Everything in flight" },
+  { key: "open",      label: "Open",             description: "Anything not yet wrapped up" },
   { key: "auth",      label: "Auth Follow-Ups",  description: "Pending insurance authorization" },
-  { key: "ready",     label: "Ready to Assign",  description: "Verification done, no dispatcher yet" },
-  { key: "out",       label: "Out for Delivery", description: "Dispatcher en route" },
+  { key: "out",       label: "Out for Delivery", description: "Driver en route" },
   { key: "delivered", label: "Delivered",        description: "Closed loop" },
   { key: "all",       label: "All",              description: "Every order" },
 ];
 
-const VALID_VIEWS = new Set<ViewKey>(["all", "open", "ready", "out", "auth", "delivered"]);
+const VALID_VIEWS = new Set<ViewKey>(["all", "open", "out", "auth", "delivered"]);
 
 // Order Date presets shown next to the date inputs. The "no filter" state is
 // represented by `datePreset === "all"` (the value FilterSelect uses for its
@@ -166,14 +166,15 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const counts = useMemo(() => {
     const m: Record<ViewKey, number> = {
       all: orders.length,
-      open: 0, ready: 0, out: 0, auth: 0, delivered: 0,
+      open: 0, out: 0, auth: 0, delivered: 0,
     };
+    // Brent 2026-06: counters key off the manual Delivery Status (`status`)
+    // instead of the derived `stage`, matching the user-visible filter set.
     for (const o of orders) {
-      if (o.stage !== "DELIVERED" && o.stage !== "CANCELLED") m.open++;
-      if (o.stage === "READY_TO_ASSIGN") m.ready++;
-      if (o.stage === "OUT_FOR_DELIVERY") m.out++;
+      if (!isTerminalStatus(o.status)) m.open++;
+      if (o.status === "OUT_FOR_DELIVERY") m.out++;
       if (AUTH_IN_FLIGHT.includes(o.authStatus)) m.auth++;
-      if (o.stage === "DELIVERED") m.delivered++;
+      if (o.status === "DELIVERED") m.delivered++;
     }
     return m;
   }, [orders]);
@@ -210,7 +211,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             Tracker
           </h1>
           <p className="mt-1 text-[14px] no-print" style={{ color: "#64748d", fontWeight: 300 }}>
-            Every order from initial intake through delivery. Status derives from data — never picked manually.
+            Every order from initial intake through delivery.
           </p>
           {/* Print-only context line: shows on paper what filters were applied
               and how many records the list contains. Display:none on screen.
@@ -694,13 +695,10 @@ function filterOrders(
   },
 ) {
   let list = orders;
-  if (view === "open") list = list.filter((o) => o.stage !== "DELIVERED" && o.stage !== "CANCELLED");
-  else if (view === "ready") list = list.filter((o) => o.stage === "READY_TO_ASSIGN");
-  else if (view === "out") list = list.filter((o) => o.stage === "OUT_FOR_DELIVERY");
-  else if (view === "auth") list = list.filter((o) =>
-    AUTH_IN_FLIGHT.includes(o.authStatus),
-  );
-  else if (view === "delivered") list = list.filter((o) => o.stage === "DELIVERED");
+  if (view === "open") list = list.filter((o) => !isTerminalStatus(o.status));
+  else if (view === "out") list = list.filter((o) => o.status === "OUT_FOR_DELIVERY");
+  else if (view === "auth") list = list.filter((o) => AUTH_IN_FLIGHT.includes(o.authStatus));
+  else if (view === "delivered") list = list.filter((o) => o.status === "DELIVERED");
 
   if (fields.authFilter) {
     list = list.filter((o) => o.authStatus === fields.authFilter);
