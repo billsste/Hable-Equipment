@@ -101,18 +101,10 @@ export const DISPATCHERS: { name: string; email: string }[] = [
   { name: "Rodney Guyton",         email: "rguyton@actionmedicalequip.com" },
 ];
 
-export const WHATS_NEEDED: { key: string; label: string; color: string; sortOrder: number }[] = [
-  { key: "DX",        label: "Diagnosis Code",   color: "#dc2626", sortOrder: 1 },
-  { key: "SIG",       label: "Signature",        color: "#dc2626", sortOrder: 2 },
-  { key: "FS",        label: "Face Sheet",       color: "#dc2626", sortOrder: 3 },
-  { key: "NOTES",     label: "Notes",            color: "#f59e0b", sortOrder: 4 },
-  { key: "PU_DT",     label: "Pickup Date",      color: "#f59e0b", sortOrder: 5 },
-  { key: "PEND_CB",   label: "Pending Callback", color: "#8b5cf6", sortOrder: 6 },
-  { key: "MGMT_REV",  label: "Mgmt Review",      color: "#8b5cf6", sortOrder: 7 },
-  { key: "DC_POST",   label: "DC Post Auth",     color: "#8b5cf6", sortOrder: 8 },
-  { key: "ORD_HOLD",  label: "Order Hold",       color: "#64748b", sortOrder: 9 },
-  { key: "INS_ISSUE", label: "Insurance Issue",  color: "#dc2626", sortOrder: 10 },
-];
+// WHATS_NEEDED list removed 2026-06 — the Tracker uses hardcoded
+// PENDING_DOCUMENT_OPTIONS (5 fixed keys) and writes to
+// Order.pendingDocuments. The Order.whatsNeeded column + WhatsNeededOption
+// table were dropped from the schema; this seed array has no consumer.
 
 // Insurance — full list seeded as-is per client preference. Cleanup deferred (open question #8).
 export const INSURANCE_LIST: { key: string; label: string; coverageType?: string; planVariant?: string; accepted?: boolean }[] = [
@@ -177,16 +169,8 @@ export const COMPANIES: { key: string; label: string; color?: string }[] = [
   { key: "ADVANCED_MEDICAL",label: "Advanced Medical",      color: "#2563eb" },
 ];
 
-export const ITEM_TYPES: { key: string; label: string; color: string }[] = [
-  { key: "WHEELCHAIR", label: "Wheelchair", color: "#2563eb" },
-  { key: "BED",        label: "Bed",        color: "#7c3aed" },
-  { key: "LIFT",       label: "Lift",       color: "#0891b2" },
-  { key: "CMD",        label: "Commode",    color: "#16a34a" },
-  { key: "OXYGEN",     label: "Oxygen",     color: "#dc2626" },
-  { key: "WALKER",     label: "Walker",     color: "#0d9488" },
-  { key: "WOUND_VAC",  label: "Wound Vac",  color: "#db2777" },
-  { key: "MISC",       label: "Misc",       color: "#64748b" },
-];
+// ITEM_TYPES list removed 2026-06 — no form consumed ItemTypeOption; the
+// table and admin tab were retired in the Brent rework.
 
 export const CANCELLATION_REASONS: { key: string; label: string }[] = [
   { key: "PATIENT_DECLINED",     label: "Patient Declined" },

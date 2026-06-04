@@ -169,7 +169,6 @@ export function toOrderShape(o: OrderWithIncludes): OrderShape {
     facilityZip: o.facility?.zip || null,
     facilityPhone: o.facility?.phone ?? null,
     facilityContact: o.facility?.contact ?? null,
-    whatsNeeded: o.whatsNeeded ?? [],
     primaryInsuranceKey: o.primaryInsuranceKey,
     secondaryInsuranceKey: o.secondaryInsuranceKey,
     deductibleStatus: o.deductibleStatus,

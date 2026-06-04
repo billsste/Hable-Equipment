@@ -11,10 +11,8 @@ export async function GET(request: Request) {
     csrs,
     dispatchers,
     facilities,
-    whatsNeeded,
     insurance,
     companies,
-    itemTypes,
     cancellationReasons,
     equipment,
   ] = await Promise.all([
@@ -50,19 +48,11 @@ export async function GET(request: Request) {
     }),
     // Every lookup sorts alphabetically by label/name — Brent 2026-06: no
     // more sortOrder-first ordering, all pickers read A-Z.
-    db.whatsNeededOption.findMany({
-      where: { active: true },
-      orderBy: { label: "asc" },
-    }),
     db.insuranceOption.findMany({
       where: { active: true },
       orderBy: { label: "asc" },
     }),
     db.fulfillmentCompany.findMany({
-      where: { active: true },
-      orderBy: { label: "asc" },
-    }),
-    db.itemTypeOption.findMany({
       where: { active: true },
       orderBy: { label: "asc" },
     }),
@@ -80,10 +70,8 @@ export async function GET(request: Request) {
     csrs,
     dispatchers,
     facilities,
-    whatsNeeded,
     insurance,
     companies,
-    itemTypes,
     cancellationReasons,
     equipment,
   });

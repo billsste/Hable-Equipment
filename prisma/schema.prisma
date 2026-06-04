@@ -289,7 +289,8 @@ model Order {
   patientLast     String      @default("")
   facilityId      Int?
   facility        Facility?   @relation(fields: [facilityId], references: [id])
-  whatsNeeded     String[]    @default([]) // multi-select keys, e.g., ["DX","SIG"]
+  // Order.whatsNeeded String[] removed 2026-06 — superseded by
+  // Order.pendingDocuments below (hardcoded 5-key PENDING_DOCUMENT_OPTIONS).
 
   // ── 1b Verification ──
   primaryInsuranceKey   String?  // FK by key into InsuranceOption
@@ -318,8 +319,7 @@ model Order {
   eldercare             Boolean @default(false)
   // Multi-select that's only meaningful when authStatus = PENDING_DOCUMENTS.
   // Stored as string keys (DIAGNOSIS_CODE / SIGNATURE / FACE_SHEET /
-  // PICKUP_TICKET / NOTES) — same kind of admin-stable enum the
-  // whatsNeeded array uses, no separate lookup table for a fixed set of 5.
+  // PICKUP_TICKET / NOTES) — code-locked enum, no separate lookup table.
   pendingDocuments      String[] @default([])
 
   // ── Dates ──
@@ -420,16 +420,9 @@ model Equipment {
 }
 
 // Generic admin-managed lookup tables. Same shape (key/label/active/sortOrder/color)
-// per locked-in pattern across What's Needed, Insurance, Item Types, Companies.
-
-model WhatsNeededOption {
-  id        String  @id @default(cuid())
-  key       String  @unique // immutable (DX, SIG, FS, ...) — referenced by conditionality rules
-  label     String         // editable display
-  color     String?
-  sortOrder Int     @default(0)
-  active    Boolean @default(true)
-}
+// per locked-in pattern across Insurance, Fulfillment Companies, Cancellation Reasons.
+// WhatsNeededOption + ItemTypeOption removed 2026-06 — both backed UI surfaces
+// that were retired in the Brent rework; nothing reads either table now.
 
 model InsuranceOption {
   id           String  @id @default(cuid())
@@ -444,15 +437,6 @@ model InsuranceOption {
 }
 
 model FulfillmentCompany {
-  id        String  @id @default(cuid())
-  key       String  @unique
-  label     String
-  color     String?
-  sortOrder Int     @default(0)
-  active    Boolean @default(true)
-}
-
-model ItemTypeOption {
   id        String  @id @default(cuid())
   key       String  @unique
   label     String

@@ -180,13 +180,11 @@ export const LOOKUP_DEFS: Record<string, LookupDef> = {
     ],
     searchKeys: ["label", "key"],
   },
-  // "whats-needed" and "item-types" tabs removed from the admin UI in
-  // 2026-06: the Tracker form now uses a hardcoded PENDING_DOCUMENT_OPTIONS
-  // list (5 keys: DIAGNOSIS_CODE / FACE_SHEET / NOTES / PICKUP_TICKET /
-  // SIGNATURE) writing to Order.pendingDocuments, and no form consumes
-  // itemTypes. The /api/lookups/whats-needed + /api/lookups/item-types
-  // handlers in lib/lookups.ts stay in place for back-compat; the DB tables
-  // and Order.whatsNeeded column are vestigial but harmless.
+  // "whats-needed" and "item-types" tabs were removed 2026-06. Tracker
+  // form now writes pending docs via a hardcoded PENDING_DOCUMENT_OPTIONS
+  // list (5 keys) to Order.pendingDocuments. The WhatsNeededOption /
+  // ItemTypeOption tables and Order.whatsNeeded column were dropped from
+  // the schema in the same pass.
   "cancellation-reasons": {
     slug: "cancellation-reasons",
     singular: "Cancellation Reason",

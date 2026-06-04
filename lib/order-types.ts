@@ -22,7 +22,6 @@ export type OrderShape = {
   facilityZip: string | null;
   facilityPhone: string | null;
   facilityContact: string | null;
-  whatsNeeded: string[];
   primaryInsuranceKey: string | null;
   secondaryInsuranceKey: string | null;
   deductibleStatus: DeductibleStatus | null;
@@ -88,7 +87,6 @@ export function deriveStage(input: {
   current: OrderStage;
   workOrderType: WorkOrderType;
   status: OutcomeStatus;
-  whatsNeeded: string[];
   primaryInsuranceKey: string | null;
   authStatus: AuthStatus;
   // Brent 2026-06: replaced the order-level dispatcherId + deliveredAt with
@@ -113,8 +111,7 @@ export function deriveStage(input: {
   // skip the insurance/auth gate and go straight to READY_TO_ASSIGN.
   const verificationComplete =
     input.workOrderType !== "DELIVERY" ||
-    (input.whatsNeeded.length === 0 &&
-      !!input.primaryInsuranceKey &&
+    (!!input.primaryInsuranceKey &&
       (input.authStatus === "NOT_REQ" || input.authStatus === "APPROVED"));
 
   if (verificationComplete) return "READY_TO_ASSIGN";
@@ -250,7 +247,7 @@ export const AUTH_IN_FLIGHT: ReadonlyArray<AuthStatus> = [
 ];
 
 // Five Pending-Documents checkboxes per Brent's call. Stored as String[] in
-// Order.pendingDocuments; the keys mirror the WhatsNeededOption shape (stable
+// Order.pendingDocuments; the keys are stable code-locked identifiers (stable
 // uppercase identifiers + human label). Sorted alphabetically by label.
 export const PENDING_DOCUMENT_OPTIONS = [
   { key: "DIAGNOSIS_CODE", label: "Diagnosis Code" },
@@ -363,7 +360,6 @@ export const ORDER_FIELD_LABELS = {
   csr: "CSR",
   facility: "Facility",
   dispatcher: "Dispatcher",
-  whatsNeeded: "What's still needed",
   fulfillmentCompanies: "Fulfillment companies",
   primaryInsurance: "Primary insurance",
   secondaryInsurance: "Secondary insurance",

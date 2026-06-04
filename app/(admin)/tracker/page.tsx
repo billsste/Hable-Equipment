@@ -60,10 +60,8 @@ export default async function TrackerPage({
         },
         orderBy: { name: "asc" },
       }),
-      db.whatsNeededOption.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),
       db.insuranceOption.findMany({ where: { active: true }, orderBy: { label: "asc" } }),
       db.fulfillmentCompany.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),
-      db.itemTypeOption.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),
       db.cancellationReason.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } }),
       db.equipment.findMany({
         where: { active: true },
@@ -76,10 +74,8 @@ export default async function TrackerPage({
     csrs,
     dispatchers,
     facilities,
-    whatsNeeded,
     insurance,
     companies,
-    itemTypes,
     cancellationReasons,
     equipment,
   ] = lookups;
@@ -93,10 +89,8 @@ export default async function TrackerPage({
         csrs,
         dispatchers,
         facilities,
-        whatsNeeded,
         insurance,
         companies,
-        itemTypes,
         cancellationReasons,
         equipment,
       }}

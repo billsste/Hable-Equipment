@@ -36,10 +36,8 @@ export type Lookups = {
     phone: string | null;
     contact: string | null;
   }>;
-  whatsNeeded: Array<{ key: string; label: string; color: string | null; sortOrder: number }>;
   insurance: Array<{ key: string; label: string; coverageType: string | null; accepted: boolean }>;
   companies: Array<{ key: string; label: string; color: string | null }>;
-  itemTypes: Array<{ key: string; label: string; color: string | null }>;
   cancellationReasons: Array<{ key: string; label: string }>;
   equipment: Array<{
     id: string;

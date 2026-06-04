@@ -80,7 +80,6 @@ export async function PATCH(
   // Track post-update values alongside the Prisma payload so deriveStage gets
   // plain values instead of having to reverse-engineer the OrderUpdateInput.
   let nextStatus: OutcomeStatus = existing.status;
-  let nextWhatsNeeded: string[] = existing.whatsNeeded;
   let nextPrimary: string | null = existing.primaryInsuranceKey;
   let nextAuth: AuthStatus = existing.authStatus;
   let nextPrintedAt: Date | null = existing.printedAt;
@@ -141,14 +140,6 @@ export async function PATCH(
   // Order-level dispatcher / deliveredAt removed — per-item driverId +
   // completedAt take over. Both are written through items[] further down.
 
-  if ("whatsNeeded" in body) {
-    const newVal = asStringArray(body.whatsNeeded);
-    if (!eqArr(newVal, existing.whatsNeeded)) {
-      data.whatsNeeded = newVal;
-      nextWhatsNeeded = newVal;
-      pushDiff(events, who, ORDER_FIELD_LABELS.whatsNeeded, existing.whatsNeeded, newVal);
-    }
-  }
   if ("fulfillmentCompanies" in body) {
     const newVal = asStringArray(body.fulfillmentCompanies);
     if (!eqArr(newVal, existing.fulfillmentCompanies)) {
@@ -482,7 +473,6 @@ export async function PATCH(
     current: existing.stage,
     workOrderType: nextWorkOrderType,
     status: nextStatus,
-    whatsNeeded: nextWhatsNeeded,
     primaryInsuranceKey: nextPrimary,
     authStatus: nextAuth,
     anyItemAssigned: effectiveItems.some((it) => it.driverId != null),

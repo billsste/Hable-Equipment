@@ -190,14 +190,12 @@ export const LOOKUP_HANDLERS: Record<string, Handler> = {
   },
 
   companies: simpleKeyedHandler("fulfillmentCompany"),
-  "whats-needed": simpleKeyedHandler("whatsNeededOption"),
-  "item-types": simpleKeyedHandler("itemTypeOption"),
   "cancellation-reasons": simpleKeyedHandler("cancellationReason"),
 };
 
-function simpleKeyedHandler(modelName: "fulfillmentCompany" | "whatsNeededOption" | "itemTypeOption" | "cancellationReason"): Handler {
-  // All four models share { id, key, label, sortOrder, active } — and the first three
-  // also have `color` (always nullable) which we don't expose in the form.
+function simpleKeyedHandler(modelName: "fulfillmentCompany" | "cancellationReason"): Handler {
+  // Both models share { id, key, label, sortOrder, active } — fulfillmentCompany
+  // also has `color` (nullable) which we don't expose in the form.
   const m = db[modelName] as unknown as {
     findMany: (args?: unknown) => Promise<Row[]>;
     create: (args: { data: Row }) => Promise<Row>;

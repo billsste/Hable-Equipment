@@ -77,7 +77,6 @@ export async function POST(request: Request) {
   const patientFirst = normalizeName(clip(body.patientFirst, LIMITS.name));
   const patientLast = normalizeName(clip(body.patientLast, LIMITS.name));
   const facilityId = pickInt(body.facilityId);
-  const whatsNeeded = asStringArray(body.whatsNeeded).slice(0, 20);
   const workOrderType: WorkOrderType = VALID_WORK_ORDER_TYPES.includes(body.workOrderType as WorkOrderType)
     ? (body.workOrderType as WorkOrderType)
     : "DELIVERY";
@@ -185,7 +184,6 @@ export async function POST(request: Request) {
     current: "INTAKE_OFF_RIP",
     workOrderType,
     status,
-    whatsNeeded,
     primaryInsuranceKey,
     authStatus,
     // Per-item drivers/completion per Brent 2026-06.
@@ -227,7 +225,6 @@ export async function POST(request: Request) {
   if (patientFirst) pushSet(ORDER_FIELD_LABELS.patientFirst, patientFirst);
   if (patientLast) pushSet(ORDER_FIELD_LABELS.patientLast, patientLast);
   if (facility?.name) pushSet(ORDER_FIELD_LABELS.facility, facility.name);
-  if (whatsNeeded.length) pushSet(ORDER_FIELD_LABELS.whatsNeeded, `[${whatsNeeded.join(", ")}]`);
   if (callReceivedDate) pushSet(ORDER_FIELD_LABELS.callReceivedDate, callReceivedDate.toISOString().slice(0, 10));
   if (dischargeDate) pushSet(ORDER_FIELD_LABELS.dischargeDate, dischargeDate.toISOString().slice(0, 10));
   if (requestedDeliveryDate) pushSet(ORDER_FIELD_LABELS.requestedDeliveryDate, requestedDeliveryDate.toISOString().slice(0, 10));
@@ -282,7 +279,6 @@ export async function POST(request: Request) {
         patientFirst,
         patientLast,
         facilityId,
-        whatsNeeded,
         notes: cleanNotes,
         callReceivedDate,
         dischargeDate,

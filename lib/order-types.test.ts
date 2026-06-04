@@ -17,7 +17,6 @@ const baseStageInput: StageInput = {
   current: "INTAKE_OFF_RIP",
   workOrderType: "DELIVERY",
   status: "ACTIVE",
-  whatsNeeded: [],
   primaryInsuranceKey: null,
   authStatus: "NOT_REQ",
   anyItemAssigned: false,
@@ -47,11 +46,14 @@ describe("deriveStage", () => {
   });
 
   it("stays in INTAKE_VERIFICATION once verification has begun but is incomplete", () => {
+    // Verification is now gated by primaryInsuranceKey + an auth state in
+    // {NOT_REQ, APPROVED}. Missing the primary key keeps the order in the
+    // verification stage even after it advanced past INTAKE_OFF_RIP.
     expect(
       deriveStage({
         ...baseStageInput,
         current: "INTAKE_VERIFICATION",
-        whatsNeeded: ["SIG"],
+        authStatus: "REQUIRED",
       }),
     ).toBe("INTAKE_VERIFICATION");
   });
@@ -75,13 +77,14 @@ describe("deriveStage", () => {
     ).toBe("READY_TO_ASSIGN");
   });
 
-  it("blocks READY_TO_ASSIGN when What's Needed is non-empty for DELIVERY", () => {
+  it("blocks READY_TO_ASSIGN when auth is mid-flight for DELIVERY", () => {
+    // DELIVERY orders gate on primaryInsuranceKey + auth in {NOT_REQ,
+    // APPROVED}. Auth in SUBMITTED holds the order in the verification stage.
     expect(
       deriveStage({
         ...baseStageInput,
         primaryInsuranceKey: "MCARE",
-        authStatus: "APPROVED",
-        whatsNeeded: ["SIG"],
+        authStatus: "SUBMITTED",
       }),
     ).toBe("INTAKE_OFF_RIP");
   });

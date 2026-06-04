@@ -6,10 +6,8 @@ import {
   CSRS,
   DISPATCHERS,
   FACILITIES_63,
-  WHATS_NEEDED,
   INSURANCE_LIST,
   COMPANIES,
-  ITEM_TYPES,
   CANCELLATION_REASONS,
   EQUIPMENT,
 } from "./seed-data";
@@ -125,13 +123,6 @@ async function main() {
   console.log(`Seeded facilities — total: ${facilityCount}`);
 
   // ── Lookup tables ──
-  for (const w of WHATS_NEEDED) {
-    await db.whatsNeededOption.upsert({
-      where: { key: w.key },
-      update: { label: w.label, color: w.color, sortOrder: w.sortOrder, active: true },
-      create: w,
-    });
-  }
   for (const ins of INSURANCE_LIST) {
     await db.insuranceOption.upsert({
       where: { key: ins.key },
@@ -159,13 +150,6 @@ async function main() {
       create: { key: c.key, label: c.label, color: c.color ?? null },
     });
   }
-  for (const it of ITEM_TYPES) {
-    await db.itemTypeOption.upsert({
-      where: { key: it.key },
-      update: { label: it.label, color: it.color, active: true },
-      create: it,
-    });
-  }
   for (const r of CANCELLATION_REASONS) {
     await db.cancellationReason.upsert({
       where: { key: r.key },
@@ -174,7 +158,7 @@ async function main() {
     });
   }
   console.log(
-    `Seeded lookups: ${WHATS_NEEDED.length} What's Needed, ${INSURANCE_LIST.length} insurance, ${COMPANIES.length} companies, ${ITEM_TYPES.length} item types, ${CANCELLATION_REASONS.length} cancellation reasons`,
+    `Seeded lookups: ${INSURANCE_LIST.length} insurance, ${COMPANIES.length} companies, ${CANCELLATION_REASONS.length} cancellation reasons`,
   );
 
   // ── Equipment catalog ──
@@ -287,7 +271,6 @@ async function seedDemoOrders(limit?: number) {
     patientLast: string;
     facilityIdx: number;
     csrIdx: number;
-    whatsNeeded?: string[];
     primary?: string;
     secondary?: string;
     deductible?: "MET" | "NOT_MET" | "NA";
@@ -309,9 +292,9 @@ async function seedDemoOrders(limit?: number) {
 
   const demos: Demo[] = [
     // ── Active intake (current week) ──
-    { stage: "INTAKE_OFF_RIP", patientFirst: "Dorothy", patientLast: "Marshall", facilityIdx: 0, csrIdx: 0, whatsNeeded: ["DX", "FS"], items: [], daysAgo: 1, notes: "Off-rip — 5 fields only" },
-    { stage: "INTAKE_VERIFICATION", patientFirst: "Harold", patientLast: "Stevens", facilityIdx: 1, csrIdx: 1, whatsNeeded: ["SIG"], primary: "MCARE", secondary: "BCBS", deductible: "MET", coinsurancePct: 20, deductibleAmount: 0, planMemberId: "10183281800", planName: "HAP Medicare Superior (HMO) Individual Plan 028", planType: "HMO", auth: "REQUIRED", dcDays: 5, items: ["WC18", "ELR"], daysAgo: 2 },
-    { stage: "INTAKE_VERIFICATION", patientFirst: "Walter", patientLast: "Yang", facilityIdx: 7, csrIdx: 2, whatsNeeded: ["DX", "PEND_CB"], primary: "VA", auth: "REQUIRED", dcDays: 9, items: ["FE", "MAT300"], daysAgo: 3, notes: "Awaiting VA callback for auth." },
+    { stage: "INTAKE_OFF_RIP", patientFirst: "Dorothy", patientLast: "Marshall", facilityIdx: 0, csrIdx: 0, items: [], daysAgo: 1, notes: "Off-rip — 5 fields only" },
+    { stage: "INTAKE_VERIFICATION", patientFirst: "Harold", patientLast: "Stevens", facilityIdx: 1, csrIdx: 1, primary: "MCARE", secondary: "BCBS", deductible: "MET", coinsurancePct: 20, deductibleAmount: 0, planMemberId: "10183281800", planName: "HAP Medicare Superior (HMO) Individual Plan 028", planType: "HMO", auth: "REQUIRED", dcDays: 5, items: ["WC18", "ELR"], daysAgo: 2 },
+    { stage: "INTAKE_VERIFICATION", patientFirst: "Walter", patientLast: "Yang", facilityIdx: 7, csrIdx: 2, primary: "VA", auth: "REQUIRED", dcDays: 9, items: ["FE", "MAT300"], daysAgo: 3, notes: "Awaiting VA callback for auth." },
     { stage: "READY_TO_ASSIGN", patientFirst: "Evelyn", patientLast: "Carter", facilityIdx: 2, csrIdx: 2, primary: "PP", deductible: "NA", auth: "NOT_REQ", dcDays: 2, companies: ["ACTION"], items: ["BSC", "TTB"], daysAgo: 4 },
     { stage: "ASSIGNED", patientFirst: "Robert", patientLast: "Nguyen", facilityIdx: 3, csrIdx: 0, primary: "AETNA", deductible: "NOT_MET", coinsurancePct: 35, deductibleAmount: 1976.65, planMemberId: "20457913302", planName: "Aetna Medicare Choice (PPO) Plan 014", planType: "PPO", auth: "APPROVED", dcDays: 4, companies: ["CDME"], dispatcherIdx: 0, items: ["WC20", "ELR", "FR"], daysAgo: 5 },
     { stage: "ACKNOWLEDGED", patientFirst: "Margaret", patientLast: "Foster", facilityIdx: 4, csrIdx: 3, primary: "MCAID", deductible: "MET", auth: "APPROVED", dcDays: 1, companies: ["ACTION"], dispatcherIdx: 1, items: ["FE", "FULLRAIL"], daysAgo: 6 },
@@ -552,7 +535,6 @@ async function seedDemoOrders(limit?: number) {
           patientFirst: d.patientFirst,
           patientLast: d.patientLast,
           facilityId: facility.id,
-          whatsNeeded: d.whatsNeeded ?? [],
           primaryInsuranceKey: d.primary ?? null,
           secondaryInsuranceKey: d.secondary ?? null,
           deductibleStatus: d.deductible ?? null,
