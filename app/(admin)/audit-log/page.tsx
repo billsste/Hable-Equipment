@@ -12,6 +12,9 @@ type AuditEntry = {
   action: string;
   detail: string;
   ref: string;
+  // Patient label captured when the entry was written. Empty for non-order
+  // events (logins, MFA, password changes, etc.).
+  patient: string;
 };
 
 const ACTION_COLORS: Array<{ match: string; bg: string; color: string }> = [
@@ -59,7 +62,10 @@ export default function AuditLogPage() {
         e.who.toLowerCase().includes(q) ||
         e.action.toLowerCase().includes(q) ||
         e.detail.toLowerCase().includes(q) ||
-        e.ref.toLowerCase().includes(q);
+        e.ref.toLowerCase().includes(q) ||
+        // Patient label is the most common search axis for clinical staff
+        // tracking a delivery — surface it in the global search.
+        (e.patient || "").toLowerCase().includes(q);
       const matchAction = !actionFilter || e.action === actionFilter;
       const matchUser = !userFilter || e.who === userFilter;
       return matchSearch && matchAction && matchUser;
@@ -68,8 +74,8 @@ export default function AuditLogPage() {
 
   function handleExport() {
     const rows: string[][] = [
-      ["Timestamp", "User", "Role", "Action", "Reference", "Detail"],
-      ...filtered.map((e) => [e.ts, e.who, e.role, e.action, e.ref, e.detail]),
+      ["Timestamp", "User", "Role", "Action", "Reference", "Patient", "Detail"],
+      ...filtered.map((e) => [e.ts, e.who, e.role, e.action, e.ref, e.patient, e.detail]),
     ];
     downloadCsv(`audit-log-${new Date().toISOString().slice(0, 10)}.csv`, rows);
   }
@@ -121,7 +127,7 @@ export default function AuditLogPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search entries..."
+            placeholder="Search by patient, user, action, reference…"
             className="w-full pl-9 pr-3 py-2 text-[13px] outline-none"
             style={{ border: "1px solid #e5edf5", borderRadius: 4, color: "#061b31" }}
           />
@@ -171,7 +177,7 @@ export default function AuditLogPage() {
           <table className="w-full">
             <thead style={{ background: "#f6f9fc" }}>
               <tr style={{ borderBottom: "1px solid #e5edf5" }}>
-                {["Timestamp", "User", "Action", "Reference", "Detail"].map((h) => (
+                {["Timestamp", "User", "Action", "Reference", "Patient", "Detail"].map((h) => (
                   <th
                     key={h}
                     className="px-5 py-2.5 text-left text-[11px] uppercase"
@@ -225,6 +231,9 @@ export default function AuditLogPage() {
                       ) : (
                         <span style={{ color: "#94a3b8" }}>—</span>
                       )}
+                    </td>
+                    <td className="px-5 py-3 text-[13px]" style={{ color: "#273951" }}>
+                      {entry.patient || <span style={{ color: "#94a3b8" }}>—</span>}
                     </td>
                     <td className="px-5 py-3 text-[13px] max-w-64 truncate" style={{ color: "#64748d" }}>
                       {entry.detail || "—"}
@@ -331,6 +340,11 @@ function AuditDetail({ entry, onClose }: { entry: AuditEntry; onClose: () => voi
               >
                 {entry.ref}
               </span>
+            </DetailRow>
+          )}
+          {entry.patient && (
+            <DetailRow label="Patient">
+              <span style={{ color: "#273951" }}>{entry.patient}</span>
             </DetailRow>
           )}
           <DetailRow label="Detail">

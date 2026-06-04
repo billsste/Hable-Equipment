@@ -7,7 +7,7 @@ import { equipStore, type UserRole } from "./equip-store";
 export async function logAudit(
   request: Request,
   user: { id: number; name: string; role: UserRole },
-  entry: { action: string; detail: string; ref?: string },
+  entry: { action: string; detail: string; ref?: string; patient?: string },
 ): Promise<void> {
   const ip =
     request.headers.get("x-forwarded-for") ??
@@ -23,5 +23,6 @@ export async function logAudit(
     // regardless of which route wrote the entry.
     detail: ip === "unknown" ? entry.detail : `${entry.detail} (ip ${ip})`,
     ref: entry.ref ?? `USR-${user.id}`,
+    patient: entry.patient ?? "",
   });
 }

@@ -12,6 +12,7 @@ export type AuditEntry = {
   action: string;
   detail: string;
   ref: string;
+  patient: string;
 };
 
 export type User = {
@@ -121,14 +122,14 @@ class EquipStore {
 
   async getAuditLog(): Promise<AuditEntry[]> {
     const rows = await db.auditEntry.findMany({ orderBy: { ts: "desc" } });
-    return rows.map((a) => ({ id: a.id, ts: a.ts.toISOString(), who: a.who, role: a.role, action: a.action, detail: a.detail, ref: a.ref }));
+    return rows.map((a) => ({ id: a.id, ts: a.ts.toISOString(), who: a.who, role: a.role, action: a.action, detail: a.detail, ref: a.ref, patient: a.patient }));
   }
 
-  async addAuditEntry(entry: Omit<AuditEntry, "id">): Promise<AuditEntry> {
+  async addAuditEntry(entry: Omit<AuditEntry, "id" | "patient"> & { patient?: string }): Promise<AuditEntry> {
     const a = await db.auditEntry.create({
-      data: { who: entry.who, role: entry.role, action: entry.action, detail: entry.detail, ref: entry.ref, ts: new Date(entry.ts) },
+      data: { who: entry.who, role: entry.role, action: entry.action, detail: entry.detail, ref: entry.ref, patient: entry.patient ?? "", ts: new Date(entry.ts) },
     });
-    return { id: a.id, ts: a.ts.toISOString(), who: a.who, role: a.role, action: a.action, detail: a.detail, ref: a.ref };
+    return { id: a.id, ts: a.ts.toISOString(), who: a.who, role: a.role, action: a.action, detail: a.detail, ref: a.ref, patient: a.patient };
   }
 }
 

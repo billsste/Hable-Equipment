@@ -172,13 +172,18 @@ model OrderAttachment {
 }
 
 model AuditEntry {
-  id     String   @id @default(cuid())
-  ts     DateTime @default(now())
-  who    String
-  role   String
-  action String
-  detail String
-  ref    String
+  id      String   @id @default(cuid())
+  ts      DateTime @default(now())
+  who     String
+  role    String
+  action  String
+  detail  String
+  ref     String
+  // Patient name captured at the moment the audit entry was written. Empty
+  // for non-order events (login, MFA, password change). Denormalized so the
+  // audit log stays a single-table lookup even if the order is later
+  // renamed or its patient details edited.
+  patient String   @default("")
 }
 
 // ─── Revamp models (additive) ─────────────────────────────────────────────────

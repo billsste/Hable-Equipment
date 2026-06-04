@@ -43,13 +43,26 @@ export function nullableString(v: unknown): string | null {
 
 export type OrderEventInput = { who: string; action: string; detail: string };
 
+// "Last, First" so the audit log column sorts alphabetically by surname,
+// matching the Patient column on the Tracker. Empty pieces are skipped so a
+// service-call order with no patient still emits a clean empty string.
+export function formatPatientName(first: string, last: string): string {
+  const f = (first ?? "").trim();
+  const l = (last ?? "").trim();
+  if (l && f) return `${l}, ${f}`;
+  return l || f || "";
+}
+
 // Builds the createMany op that mirrors per-order events into AuditEntry. Both
 // POST and PATCH route handlers feed this into their db.$transaction so the
-// system-wide audit log stays in lockstep with OrderEvent rows.
+// system-wide audit log stays in lockstep with OrderEvent rows. The patient
+// label is captured at write time so the audit log shows who an entry was
+// about even if the order's patient is later renamed.
 export function buildAuditMirrorOp(
   events: ReadonlyArray<OrderEventInput>,
   user: { role: string },
   ref: string,
+  patient: string,
   ts?: Date,
 ) {
   return db.auditEntry.createMany({
@@ -59,6 +72,7 @@ export function buildAuditMirrorOp(
       action: e.action,
       detail: e.detail,
       ref,
+      patient,
       ...(ts ? { ts } : {}),
     })),
   });

@@ -7,6 +7,7 @@ import {
   asStringArray,
   buildAuditMirrorOp,
   deriveStage,
+  formatPatientName,
   generateOrderNumber,
   normalizeName,
   nullableString,
@@ -343,7 +344,7 @@ export async function POST(request: Request) {
       },
       include: ORDER_INCLUDE,
     }),
-    buildAuditMirrorOp(initialEvents, user, `ORD-${orderNumber}`),
+    buildAuditMirrorOp(initialEvents, user, `ORD-${orderNumber}`, formatPatientName(patientFirst, patientLast)),
   ]);
 
   return NextResponse.json({ order: toOrderShape(created) }, { status: 201 });

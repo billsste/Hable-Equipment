@@ -6,6 +6,7 @@ import {
   asStringArray,
   buildAuditMirrorOp,
   deriveStage,
+  formatPatientName,
   normalizeName,
   nullableString,
   pickDate,
@@ -456,15 +457,16 @@ export async function PATCH(
 
     // diffItems labels equipment-list changes (add/remove/qty) for the
     // history event. Per-item edits (driverId, completedAt, doorTagCount)
-    // wouldn't surface in that diff, but they still need to persist — so
-    // detect any per-item drift and flip itemsChanged regardless. The
-    // history event still only fires when diffItems found something the
-    // user would want to read.
+    // get their own history events below so each one shows up on the
+    // History tab + Audit Log with the exact item that changed.
     const itemDetail = await diffItems(existing.items, newItemRows);
     if (itemDetail) {
       events.push({ who, action: ORDER_ACTIONS.ITEMS_CHANGED, detail: itemDetail });
     }
-    if (itemDetail || perItemFieldsChanged(existing.items, newItemRows)) {
+    const perItemEvents = await perItemEventDescriptions(existing.items, newItemRows, who);
+    for (const ev of perItemEvents) events.push(ev);
+
+    if (itemDetail || perItemEvents.length > 0) {
       itemsChanged = true;
     }
   }
@@ -524,7 +526,7 @@ export async function PATCH(
   }
   ops.push(updateOp);
   if (events.length) {
-    ops.push(buildAuditMirrorOp(events, user, `ORD-${existing.orderNumber}`, now));
+    ops.push(buildAuditMirrorOp(events, user, `ORD-${existing.orderNumber}`, formatPatientName(existing.patientFirst, existing.patientLast), now));
   }
   const results = await db.$transaction(ops);
   const updated = results[ops.indexOf(updateOp)] as OrderWithIncludes;
@@ -563,12 +565,18 @@ function eqDate(a: Date | null | undefined, b: Date | null | undefined): boolean
 // adds/removes/qty changes are covered by `diffItems`; this catches the
 // edits that diffItems silently passes over (the user-visible Stage 3
 // driver/date/door-tag inputs).
-function perItemFieldsChanged(
+// Produce one history event per per-item field change so each driver
+// assignment, completion date stamp, and door tag bump shows up on the
+// History tab + Audit Log with who did it and when. Equipment-list
+// add/remove/qty changes are handled separately by diffItems.
+async function perItemEventDescriptions(
   existingItems: ReadonlyArray<{
     equipmentId: string;
     driverId: number | null;
+    driver: { id: number; name: string } | null;
     completedAt: Date | null;
     doorTagCount: number;
+    equipment: { abbreviation: string; name: string };
   }>,
   next: ReadonlyArray<{
     equipmentId: string;
@@ -576,26 +584,79 @@ function perItemFieldsChanged(
     completedAt: Date | null;
     doorTagCount: number;
   }>,
-): boolean {
-  if (existingItems.length !== next.length) return true;
-  const oldByEq = new Map(
-    existingItems.map((it) => [
-      it.equipmentId,
-      {
-        driverId: it.driverId,
-        completedAt: it.completedAt?.getTime() ?? null,
-        doorTagCount: it.doorTagCount,
-      },
-    ]),
+  who: string,
+): Promise<OrderEventInput[]> {
+  const events: OrderEventInput[] = [];
+
+  const oldByEq = new Map(existingItems.map((it) => [it.equipmentId, it]));
+
+  // Need a name for any driver in the incoming payload that we don't already
+  // know about (e.g. a brand-new assignment to a driver who wasn't on a
+  // sibling item). Fetch in one query and cache.
+  const unknownDriverIds = Array.from(
+    new Set(
+      next
+        .map((it) => it.driverId)
+        .filter((id): id is number => id != null)
+        .filter((id) => !existingItems.some((ex) => ex.driverId === id)),
+    ),
   );
+  const driverNameById = new Map<number, string>();
+  for (const ex of existingItems) {
+    if (ex.driver) driverNameById.set(ex.driver.id, ex.driver.name);
+  }
+  if (unknownDriverIds.length) {
+    const rows = await db.user.findMany({
+      where: { id: { in: unknownDriverIds } },
+      select: { id: true, name: true },
+    });
+    for (const r of rows) driverNameById.set(r.id, r.name);
+  }
+
   for (const it of next) {
     const prev = oldByEq.get(it.equipmentId);
-    if (!prev) return true;
-    if (prev.driverId !== it.driverId) return true;
-    if (prev.completedAt !== (it.completedAt?.getTime() ?? null)) return true;
-    if (prev.doorTagCount !== it.doorTagCount) return true;
+    if (!prev) continue; // new-item case is covered by diffItems' "added" line
+    const label = prev.equipment.abbreviation || prev.equipment.name;
+
+    // Driver assignment changes
+    if (prev.driverId !== it.driverId) {
+      const oldName = prev.driverId != null ? (driverNameById.get(prev.driverId) ?? `#${prev.driverId}`) : "Unassigned";
+      const newName = it.driverId != null ? (driverNameById.get(it.driverId) ?? `#${it.driverId}`) : "Unassigned";
+      events.push({
+        who,
+        action: "Driver assigned",
+        detail: `${label}: ${oldName} → ${newName}`,
+      });
+    }
+
+    // Completion date stamp / clear
+    const prevCompleted = prev.completedAt?.toISOString().slice(0, 10) ?? null;
+    const nextCompleted = it.completedAt?.toISOString().slice(0, 10) ?? null;
+    if (prevCompleted !== nextCompleted) {
+      events.push({
+        who,
+        action: nextCompleted ? "Item completed" : "Item completion cleared",
+        detail: nextCompleted
+          ? `${label}: ${nextCompleted}${prevCompleted ? ` (was ${prevCompleted})` : ""}`
+          : `${label}: ${prevCompleted ?? "—"} cleared`,
+      });
+    }
+
+    // Door tag bumps — emit per delta so the timeline reads naturally
+    // ("door tag added", "door tag added") rather than collapsing to a
+    // single "2 → 4" line.
+    if (prev.doorTagCount !== it.doorTagCount) {
+      const direction = it.doorTagCount > prev.doorTagCount ? "added" : "removed";
+      const delta = Math.abs(it.doorTagCount - prev.doorTagCount);
+      events.push({
+        who,
+        action: ORDER_ACTIONS.DOOR_TAG,
+        detail: `${label}: ${prev.doorTagCount} → ${it.doorTagCount} door tag${delta === 1 ? "" : "s"} ${direction}`,
+      });
+    }
   }
-  return false;
+
+  return events;
 }
 
 async function diffItems(
