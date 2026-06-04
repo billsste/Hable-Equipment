@@ -122,6 +122,39 @@ export default function OrderForm(props: Props) {
   const [step, setStep] = useState(1);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Dirty-state guard. Snapshot every editable field on first render so we
+  // can tell whether the user has touched anything since open. Tab switches
+  // (Initial Intake / Verification / Fulfillment) don't reset state — they
+  // toggle visibility inside the same component — so this still works
+  // across all three views. After a successful save the modal unmounts via
+  // onSaved, so we don't need to re-baseline mid-life.
+  const currentSnapshot = JSON.stringify({
+    workOrderType, csrId, patientFirst, patientLast, facilityId,
+    callReceivedDate, primary, secondary, deductible, coinsurancePct,
+    deductibleAmount, authStatus, dosSubmitted, pendingDocuments,
+    verificationStatus, companies, dischargeDate, requestedDeliveryDate,
+    eldercare, items, noteDraft, status, statusReason,
+  });
+  const initialSnapshotRef = useRef<string | null>(null);
+  if (initialSnapshotRef.current === null) {
+    initialSnapshotRef.current = currentSnapshot;
+  }
+  const isDirty =
+    !justSaved && !saving && initialSnapshotRef.current !== currentSnapshot;
+
+  // Wraps every modal-close vector (X button, Escape, backdrop click). When
+  // there are unsaved edits, ask before discarding so the dispatcher can't
+  // lose a half-filled Verification tab by accidentally clicking outside.
+  function safeClose() {
+    if (isDirty) {
+      const ok = window.confirm(
+        "You have unsaved changes. Discard them?",
+      );
+      if (!ok) return;
+    }
+    onClose();
+  }
+
   useEffect(() => {
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -134,11 +167,26 @@ export default function OrderForm(props: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
-      onClose();
+      safeClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    // safeClose closes over `isDirty`; rebind so the latest value is used.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty, onClose]);
+
+  // Browser-level guard for refresh / tab close / nav-away. Standard
+  // beforeunload pattern — browsers ignore custom messages, but the
+  // `returnValue = ""` is what triggers the native "Leave site?" dialog.
+  useEffect(() => {
+    if (!isDirty) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
 
   function toggleCompany(key: string) {
     setCompanies((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
@@ -374,7 +422,7 @@ export default function OrderForm(props: Props) {
       className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4"
       style={{ background: "rgba(6,27,49,0.4)" }}
     >
-      <div className="absolute inset-0" onClick={onClose} />
+      <div className="absolute inset-0" onClick={safeClose} />
       <div
         className="relative z-10 h-[100dvh] md:h-auto md:max-h-[92vh] w-full max-w-[1100px] overflow-hidden flex flex-col rounded-none md:rounded-lg"
         style={{
@@ -454,7 +502,7 @@ export default function OrderForm(props: Props) {
             </h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={safeClose}
             className="transition-colors"
             style={{
               flexShrink: 0,
@@ -852,6 +900,40 @@ export default function OrderForm(props: Props) {
           style={{ borderTop: "1px solid #e5edf5", background: "#ffffff" }}
         >
           <div className="flex flex-wrap gap-1.5">{actionButtons}</div>
+          <div className="flex items-center gap-2 w-full md:w-auto md:flex-wrap md:justify-end">
+            {isDirty && (
+              // Quiet inline indicator so the dispatcher can tell at a
+              // glance whether they have edits in flight. Pulses on the dot
+              // to draw the eye without alarming. Stays visible until the
+              // user hits Save (which clears justSaved) or discards.
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: "#9b6829",
+                  background: "rgba(245,158,11,0.10)",
+                  border: "1px solid rgba(245,158,11,0.30)",
+                  borderRadius: 999,
+                  whiteSpace: "nowrap",
+                }}
+                title="You have unsaved edits. Closing or refreshing will discard them."
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "#9b6829",
+                    display: "inline-block",
+                  }}
+                />
+                Unsaved changes
+              </span>
+            )}
           <button
             onClick={isCreate ? handleCreate : () => handleSave()}
             disabled={saving || justSaved}
@@ -879,6 +961,7 @@ export default function OrderForm(props: Props) {
             )}
             {justSaved ? "Saved" : isCreate ? "Create Order" : "Save Changes"}
           </button>
+          </div>
         </div>
       </div>
     </div>
