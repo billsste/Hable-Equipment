@@ -5,3 +5,4 @@ node_modules/
 /lib/generated/prisma
 *.tsbuildinfo
 .DS_Store
+.claude/
