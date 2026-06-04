@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { LIMITS, clip, getSessionUser } from "@/lib/auth";
 import {
@@ -18,7 +17,6 @@ import {
   type OrderEventInput,
 } from "@/lib/order-helpers";
 import {
-  AUTH_IN_FLIGHT,
   AUTH_LABELS,
   ORDER_ACTIONS,
   ORDER_FIELD_LABELS,
@@ -54,27 +52,10 @@ export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const url = new URL(request.url);
-  const view = url.searchParams.get("view");
-
-  const where: Prisma.OrderWhereInput = {};
-  if (view === "open") {
-    where.stage = { notIn: ["DELIVERED", "CANCELLED"] };
-  } else if (view === "auth-followups") {
-    where.authStatus = { in: [...AUTH_IN_FLIGHT] };
-  } else if (view === "today") {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    where.OR = [
-      { dischargeDate: { gte: start, lt: end } },
-      { stage: "OUT_FOR_DELIVERY" },
-    ];
-  }
-
+  // Tracker view tabs were removed in 2026-06 — clients no longer pass
+  // `?view=open|today|auth-followups`. The endpoint just returns every
+  // order; filtering happens client-side in TrackerClient.
   const rows = await db.order.findMany({
-    where,
     include: ORDER_INCLUDE,
     orderBy: [{ dischargeDate: "asc" }, { createdAt: "desc" }],
   });
