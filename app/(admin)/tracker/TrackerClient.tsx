@@ -82,9 +82,17 @@ const DATE_FIELD_OPTIONS: { value: DateField; label: string }[] = [
   { value: "requested", label: "Requested Delivery Date" },
   { value: "dos",       label: "DOS Submitted" },
 ];
+// "Order Date" everywhere in the Tracker means the date the call came in
+// (Stage 1 → `callReceivedDate`). Falls back to `createdAt` for legacy rows
+// that pre-date the Stage 1 field. Column display, filter, sort, and CSV
+// all funnel through this so they can't drift apart.
+function orderDateOf(o: OrderShape): string {
+  return o.callReceivedDate ?? o.createdAt;
+}
+
 function pickDateForField(o: OrderShape, field: DateField): string | null {
   switch (field) {
-    case "orderDate": return o.createdAt;
+    case "orderDate": return orderDateOf(o);
     case "discharge": return o.dischargeDate;
     case "requested": return o.requestedDeliveryDate;
     case "dos":       return o.dosSubmitted;
@@ -105,11 +113,11 @@ const DATE_PRESET_OPTIONS: { value: string; label: string }[] = [
 ];
 
 // Compute the from/to ISO date range for a preset using UTC boundaries — the
-// Order Date column and CSV both render createdAt in UTC (timeZone: "UTC")
-// and the filter compares against createdAt.slice(0,10) which is the UTC
-// date. Computing the range in local time would let a late-night order in a
-// non-UTC timezone match the filter while displaying a different calendar
-// date in the column. UTC everywhere keeps filter / column / CSV consistent.
+// Order Date column and CSV both render dates with `timeZone: "UTC"` and the
+// filter compares against ISO.slice(0,10) which is the UTC date. Computing
+// the range in local time would let a late-night order in a non-UTC timezone
+// match the filter while displaying a different calendar date in the column.
+// UTC everywhere keeps filter / column / CSV consistent.
 function resolveDatePreset(key: DatePreset): { from: string; to: string } | null {
   if (key === "all" || key === "custom") return null;
   const now = new Date();
@@ -528,7 +536,7 @@ function Row({ order, onClick }: { order: OrderShape; mounted: boolean; onClick:
       </Td>
       <Td>
         <span style={{ color: "#273951", fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
-          {formatOrderDate(order.createdAt)}
+          {formatOrderDate(orderDateOf(order))}
         </span>
       </Td>
       <Td>
@@ -604,7 +612,7 @@ function Card({ order, onClick }: { order: OrderShape; mounted: boolean; onClick
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 12 }}>
         <span style={{ color: "#64748d", fontFeatureSettings: '"tnum"' }}>
-          Ordered {formatOrderDate(order.createdAt)}
+          Ordered {formatOrderDate(orderDateOf(order))}
         </span>
         <span style={{ color: "#94a3b8" }}>·</span>
         {(() => {
@@ -1183,7 +1191,7 @@ function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): O
   const get = (o: OrderShape): string | number => {
     switch (sort.key) {
       case "orderNumber": return o.orderNumber;
-      case "orderDate":   return new Date(o.createdAt).getTime();
+      case "orderDate":   return new Date(orderDateOf(o)).getTime();
       case "patient": return o.patientDisplay.toLowerCase();
       case "facility": return (o.facilityName ?? "").toLowerCase();
       case "orderType": return WORK_ORDER_TYPE_LABELS[o.workOrderType].toLowerCase();
@@ -1344,7 +1352,10 @@ function exportCsv(rows: OrderShape[]): void {
       o.facilityContact ?? "",
       o.csrName ?? "",
       o.handler ?? "",
-      fmtDate(o.createdAt),
+      // "Order Date" = the same value the column / filter use
+      // (callReceivedDate ?? createdAt). "Call Received Date" stays as the
+      // raw Stage 1 field so a CSV-side user can tell them apart.
+      fmtDate(orderDateOf(o)),
       fmtDate(o.callReceivedDate),
       fmtDate(o.dischargeDate),
       fmtDate(o.requestedDeliveryDate),
