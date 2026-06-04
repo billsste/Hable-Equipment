@@ -44,6 +44,7 @@ const FACILITY_TYPES = [
   { value: "ALF", label: "Assisted Living Facility" },
   { value: "PhysicianGroup", label: "Physician Group" },
   { value: "HomeHealth", label: "Home Health" },
+  { value: "HomeDelivery", label: "Home Delivery" },
   { value: "Hospital", label: "Hospital" },
   { value: "Other", label: "Other" },
 ];

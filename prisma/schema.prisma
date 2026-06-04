@@ -55,7 +55,7 @@ model Facility {
   zip      String   @default("")
   phone    String?
   contact  String?
-  facilityType String? // SNF | ALF | PhysicianGroup | HomeHealth | Hospital | Other (open question for client)
+  facilityType String? // SNF | ALF | PhysicianGroup | HomeHealth | HomeDelivery | Hospital | Other (open question for client)
   tickets  Ticket[]
   orders   Order[]
 }
