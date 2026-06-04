@@ -848,7 +848,7 @@ export default function OrderForm(props: Props) {
                   empty unless the status requires it (cancel/hold/etc.). */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 <SearchSelect
-                  label="Delivery Status"
+                  label="Overall Delivery Status"
                   value={status}
                   onChange={(v) => {
                     const next = (v ?? "ACTIVE") as OutcomeStatus;

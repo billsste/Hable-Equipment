@@ -264,7 +264,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
               chips.push(`Pending Doc ${docLabel}`);
             }
             if (verificationFilter) chips.push(`Order Status ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
-            if (statusFilter) chips.push(`Full Order Delivery ${STATUS_LABELS[statusFilter as OutcomeStatus]}`);
+            if (statusFilter) chips.push(`Overall Delivery ${STATUS_LABELS[statusFilter as OutcomeStatus]}`);
             if (driverFilter) {
               const dn = lookups.dispatchers.find((d) => String(d.id) === driverFilter)?.name ?? driverFilter;
               chips.push(`Driver ${dn}`);
@@ -746,7 +746,7 @@ const FILTER_DIM_LABEL: Record<FilterDim, string> = {
   auth: "Authorization Status",
   pendingDoc: "Pending Document Actions",
   verification: "Order Status",
-  status: "Full Order Delivery Status",
+  status: "Overall Delivery Status",
   driver: "Driver",
   csr: "CSR",
   doorTag: "Door Tags",
@@ -1456,7 +1456,7 @@ function exportCsv(rows: OrderShape[]): void {
     "Deductible Status", "Coinsurance %", "Deductible Amount",
     // verification / auth
     "Authorization Status", "Pending Document Actions",
-    "Order Status", "Full Order Delivery Status", "Eldercare",
+    "Order Status", "Overall Delivery Status", "Eldercare",
     // companies + notes
     "Fulfillment Companies", "Notes",
     // per-item slice — one row per item

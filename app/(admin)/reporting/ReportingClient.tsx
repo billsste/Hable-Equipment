@@ -300,7 +300,7 @@ const DIMENSION_OPTIONS: Array<{ value: Dimension; label: string }> = [
   // "stage" (auto-derived lifecycle) is intentionally hidden from the
   // picker — Delivery Status is the user-facing equivalent. Internal
   // funnel logic still reads o.stage.
-  { value: "status", label: "Full Order Delivery Status" },
+  { value: "status", label: "Overall Delivery Status" },
   { value: "coinsurance", label: "Coinsurance %" },
   { value: "deductible", label: "Deductible amount" },
   { value: "dow", label: "Day of week" },
@@ -323,7 +323,7 @@ const PRESETS: Array<{ label: string; rowDim: Dimension; colDim: Dimension | "no
   { label: "Equipment by facility", rowDim: "facility", colDim: "category", metric: "units" },
   { label: "Driver workload", rowDim: "driver", colDim: "time", metric: "orders" },
   { label: "Company performance", rowDim: "company", colDim: "time", metric: "orders" },
-  { label: "Full Order Delivery Status by month", rowDim: "status", colDim: "time", metric: "orders" },
+  { label: "Overall Delivery Status by month", rowDim: "status", colDim: "time", metric: "orders" },
 ];
 
 const VALID_GRAN = ["day", "week", "month", "quarter"] as const satisfies readonly Granularity[];
@@ -641,7 +641,7 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
         <MultiChip label="Company" options={filterOptions.companies} selected={filters.companies} onChange={(s) => setFilterField("companies", s)} />
         <MultiChip label="Insurance" options={filterOptions.insurance} selected={filters.insurance} onChange={(s) => setFilterField("insurance", s)} />
         <MultiChip label="Category" options={filterOptions.categories} selected={filters.categories} onChange={(s) => setFilterField("categories", s)} />
-        <MultiChip label="Full Order Delivery Status" options={filterOptions.statuses} selected={filters.statuses} onChange={(s) => setFilterField("statuses", s)} />
+        <MultiChip label="Overall Delivery Status" options={filterOptions.statuses} selected={filters.statuses} onChange={(s) => setFilterField("statuses", s)} />
         {totalActiveFilters(filters) > 0 && (
           <button onClick={() => setFilters(emptyFilters())} style={resetBtnStyle}>
             <X size={12} />
@@ -1950,7 +1950,7 @@ function ActiveFilterChips({
   filters.companies.forEach((v) => items.push({ key: "companies", value: v, label: `Co: ${companyLabel.get(v) ?? v}` }));
   filters.insurance.forEach((v) => items.push({ key: "insurance", value: v, label: `Ins: ${insuranceLabel.get(v) ?? v}` }));
   filters.categories.forEach((v) => items.push({ key: "categories", value: v, label: `Cat: ${v}` }));
-  filters.statuses.forEach((v) => items.push({ key: "statuses", value: v, label: `Full Order Delivery Status: ${STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v}` }));
+  filters.statuses.forEach((v) => items.push({ key: "statuses", value: v, label: `Overall Delivery Status: ${STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v}` }));
   if (items.length === 0) return null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flexBasis: "100%", marginTop: 6 }}>
