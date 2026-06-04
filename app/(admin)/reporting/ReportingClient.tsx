@@ -284,8 +284,10 @@ const DIMENSION_OPTIONS: Array<{ value: Dimension; label: string }> = [
   { value: "insurance", label: "Insurance" },
   { value: "category", label: "Equipment category" },
   { value: "item", label: "Equipment item" },
-  { value: "stage", label: "Stage" },
-  { value: "status", label: "Status" },
+  // "stage" (auto-derived lifecycle) is intentionally hidden from the
+  // picker — Delivery Status is the user-facing equivalent. Internal
+  // funnel logic still reads o.stage.
+  { value: "status", label: "Delivery Status" },
   { value: "coinsurance", label: "Coinsurance %" },
   { value: "deductible", label: "Deductible amount" },
   { value: "dow", label: "Day of week" },
@@ -307,7 +309,7 @@ const PRESETS: Array<{ label: string; rowDim: Dimension; colDim: Dimension | "no
   { label: "Equipment by facility", rowDim: "facility", colDim: "category", metric: "units" },
   { label: "Driver workload", rowDim: "driver", colDim: "time", metric: "orders" },
   { label: "Company performance", rowDim: "company", colDim: "time", metric: "orders" },
-  { label: "Stage by month", rowDim: "stage", colDim: "time", metric: "orders" },
+  { label: "Delivery Status by month", rowDim: "status", colDim: "time", metric: "orders" },
 ];
 
 const VALID_GRAN = ["day", "week", "month", "quarter"] as const satisfies readonly Granularity[];
@@ -621,12 +623,11 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
       >
         <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.04em" }}>Filters</span>
         <MultiChip label="Facility" options={filterOptions.facilities} selected={filters.facilities} onChange={(s) => setFilterField("facilities", s)} />
-        <MultiChip label="Dispatcher" options={filterOptions.dispatchers} selected={filters.dispatchers} onChange={(s) => setFilterField("dispatchers", s)} />
+        <MultiChip label="Driver" options={filterOptions.dispatchers} selected={filters.dispatchers} onChange={(s) => setFilterField("dispatchers", s)} />
         <MultiChip label="Company" options={filterOptions.companies} selected={filters.companies} onChange={(s) => setFilterField("companies", s)} />
         <MultiChip label="Insurance" options={filterOptions.insurance} selected={filters.insurance} onChange={(s) => setFilterField("insurance", s)} />
         <MultiChip label="Category" options={filterOptions.categories} selected={filters.categories} onChange={(s) => setFilterField("categories", s)} />
-        <MultiChip label="Stage" options={filterOptions.stages} selected={filters.stages} onChange={(s) => setFilterField("stages", s)} />
-        <MultiChip label="Status" options={filterOptions.statuses} selected={filters.statuses} onChange={(s) => setFilterField("statuses", s)} />
+        <MultiChip label="Delivery Status" options={filterOptions.statuses} selected={filters.statuses} onChange={(s) => setFilterField("statuses", s)} />
         {totalActiveFilters(filters) > 0 && (
           <button onClick={() => setFilters(emptyFilters())} style={resetBtnStyle}>
             <X size={12} />
@@ -1573,7 +1574,7 @@ function ExplorerCard({
   );
 }
 
-const DRILL_DIMS: ReadonlyArray<Dimension> = ["facility", "driver", "company", "insurance", "category", "stage", "status"];
+const DRILL_DIMS: ReadonlyArray<Dimension> = ["facility", "driver", "company", "insurance", "category", "status"];
 
 function ExplorerTable({
   data,
@@ -1913,12 +1914,11 @@ function ActiveFilterChips({
 }) {
   const items: Array<{ key: keyof Filters; value: string; label: string }> = [];
   filters.facilities.forEach((v) => items.push({ key: "facilities", value: v, label: `Facility: ${v}` }));
-  filters.dispatchers.forEach((v) => items.push({ key: "dispatchers", value: v, label: `Dispatcher: ${v}` }));
+  filters.dispatchers.forEach((v) => items.push({ key: "dispatchers", value: v, label: `Driver: ${v}` }));
   filters.companies.forEach((v) => items.push({ key: "companies", value: v, label: `Co: ${companyLabel.get(v) ?? v}` }));
   filters.insurance.forEach((v) => items.push({ key: "insurance", value: v, label: `Ins: ${insuranceLabel.get(v) ?? v}` }));
   filters.categories.forEach((v) => items.push({ key: "categories", value: v, label: `Cat: ${v}` }));
-  filters.stages.forEach((v) => items.push({ key: "stages", value: v, label: `Stage: ${STAGE_LABELS[v as keyof typeof STAGE_LABELS] ?? v}` }));
-  filters.statuses.forEach((v) => items.push({ key: "statuses", value: v, label: `Status: ${STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v}` }));
+  filters.statuses.forEach((v) => items.push({ key: "statuses", value: v, label: `Delivery Status: ${STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v}` }));
   if (items.length === 0) return null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flexBasis: "100%", marginTop: 6 }}>
