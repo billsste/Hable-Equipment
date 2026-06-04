@@ -43,6 +43,14 @@ function effectiveDeliveredAt(o: OrderShape): string | null {
   }
   return max;
 }
+// "Order Date" everywhere — must match the Tracker's definition so a
+// CSV-pulled record reconciles with what the user sees there. Stage 1
+// captures the call date as `callReceivedDate`; legacy rows fall back to
+// `createdAt` (the row insertion timestamp). Funnels, KPIs, cycle-time
+// metrics, day-of-week heatmap, and time bucketing all route through this.
+function orderDateOf(o: OrderShape): string {
+  return o.callReceivedDate ?? o.createdAt;
+}
 import { downloadCsv } from "@/lib/utils";
 
 type Props = {
@@ -117,17 +125,22 @@ function totalActiveFilters(f: Filters): number {
   return f.facilities.size + f.dispatchers.size + f.companies.size + f.insurance.size + f.stages.size + f.statuses.size + f.categories.size;
 }
 
+// All date math on the Reporting page runs in UTC: Stage 1 dates are stored
+// as midnight-UTC ISOs (e.g. "2026-06-04T00:00:00.000Z") and the Tracker
+// renders them with `timeZone: "UTC"`. Doing the bucketing in local time
+// would shift a Stage 1 "Jun 4" into the "Jun 3" bucket for any browser
+// west of UTC. UTC everywhere keeps Reporting consistent with Tracker.
 function isoDayString(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
 function defaultDateRange() {
   const t = new Date();
   const f = new Date(t);
-  f.setDate(t.getDate() - 90);
+  f.setUTCDate(t.getUTCDate() - 90);
   return { from: isoDayString(f), to: isoDayString(t) };
 }
 
@@ -147,21 +160,21 @@ function presetRange(key: PresetKey): { from: string; to: string } {
   const t = new Date();
   const to = isoDayString(t);
   if (key === "mtd") {
-    const f = new Date(t.getFullYear(), t.getMonth(), 1);
+    const f = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1));
     return { from: isoDayString(f), to };
   }
   if (key === "qtd") {
-    const qStart = Math.floor(t.getMonth() / 3) * 3;
-    const f = new Date(t.getFullYear(), qStart, 1);
+    const qStart = Math.floor(t.getUTCMonth() / 3) * 3;
+    const f = new Date(Date.UTC(t.getUTCFullYear(), qStart, 1));
     return { from: isoDayString(f), to };
   }
   if (key === "ytd") {
-    const f = new Date(t.getFullYear(), 0, 1);
+    const f = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
     return { from: isoDayString(f), to };
   }
   const days = key === "30d" ? 30 : key === "90d" ? 90 : key === "180d" ? 180 : 365;
   const f = new Date(t);
-  f.setDate(t.getDate() - days);
+  f.setUTCDate(t.getUTCDate() - days);
   return { from: isoDayString(f), to };
 }
 
@@ -174,24 +187,24 @@ function activePreset(from: string, to: string): PresetKey | null {
 }
 
 function formatRangeLabel(from: string, to: string): string {
-  const f = new Date(from + "T00:00:00");
-  const t = new Date(to + "T00:00:00");
-  const sameYear = f.getFullYear() === t.getFullYear();
-  const fLabel = `${MONTHS[f.getMonth()]} ${f.getDate()}${sameYear ? "" : ", " + f.getFullYear()}`;
-  const tLabel = `${MONTHS[t.getMonth()]} ${t.getDate()}, ${t.getFullYear()}`;
+  const f = new Date(from + "T00:00:00.000Z");
+  const t = new Date(to + "T00:00:00.000Z");
+  const sameYear = f.getUTCFullYear() === t.getUTCFullYear();
+  const fLabel = `${MONTHS[f.getUTCMonth()]} ${f.getUTCDate()}${sameYear ? "" : ", " + f.getUTCFullYear()}`;
+  const tLabel = `${MONTHS[t.getUTCMonth()]} ${t.getUTCDate()}, ${t.getUTCFullYear()}`;
   return `${fLabel} – ${tLabel}`;
 }
 
 function rangeMs(from: string, to: string) {
   return {
-    fromTs: from ? new Date(from + "T00:00:00").getTime() : Number.NEGATIVE_INFINITY,
-    toTs: to ? new Date(to + "T23:59:59").getTime() : Number.POSITIVE_INFINITY,
+    fromTs: from ? new Date(from + "T00:00:00.000Z").getTime() : Number.NEGATIVE_INFINITY,
+    toTs: to ? new Date(to + "T23:59:59.999Z").getTime() : Number.POSITIVE_INFINITY,
   };
 }
 
 function priorRange(from: string, to: string): { from: string; to: string } {
-  const f = new Date(from + "T00:00:00");
-  const t = new Date(to + "T00:00:00");
+  const f = new Date(from + "T00:00:00.000Z");
+  const t = new Date(to + "T00:00:00.000Z");
   const days = Math.max(1, Math.round((t.getTime() - f.getTime()) / 86400000) + 1);
   const priorTo = new Date(f.getTime() - 86400000);
   const priorFrom = new Date(priorTo.getTime() - (days - 1) * 86400000);
@@ -202,25 +215,25 @@ function bucketKey(d: Date, gran: Granularity): string {
   if (gran === "day") return isoDayString(d);
   if (gran === "week") {
     const monday = new Date(d);
-    const dow = (monday.getDay() + 6) % 7;
-    monday.setDate(monday.getDate() - dow);
+    const dow = (monday.getUTCDay() + 6) % 7;
+    monday.setUTCDate(monday.getUTCDate() - dow);
     return isoDayString(monday);
   }
   if (gran === "month") {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
   }
-  const q = Math.floor(d.getMonth() / 3) + 1;
-  return `${d.getFullYear()}-Q${q}`;
+  const q = Math.floor(d.getUTCMonth() / 3) + 1;
+  return `${d.getUTCFullYear()}-Q${q}`;
 }
 
 function bucketLabel(key: string, gran: Granularity): string {
   if (gran === "day") {
-    const d = new Date(key + "T00:00:00");
-    return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+    const d = new Date(key + "T00:00:00.000Z");
+    return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
   }
   if (gran === "week") {
-    const d = new Date(key + "T00:00:00");
-    return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+    const d = new Date(key + "T00:00:00.000Z");
+    return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
   }
   if (gran === "month") {
     const [y, m] = key.split("-");
@@ -230,8 +243,8 @@ function bucketLabel(key: string, gran: Granularity): string {
 }
 
 function enumerateBuckets(from: string, to: string, gran: Granularity): string[] {
-  const start = new Date(from + "T00:00:00");
-  const end = new Date(to + "T00:00:00");
+  const start = new Date(from + "T00:00:00.000Z");
+  const end = new Date(to + "T00:00:00.000Z");
   const out: string[] = [];
   const seen = new Set<string>();
   const cur = new Date(start);
@@ -241,7 +254,7 @@ function enumerateBuckets(from: string, to: string, gran: Granularity): string[]
       seen.add(key);
       out.push(key);
     }
-    cur.setDate(cur.getDate() + 1);
+    cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return out;
 }
@@ -493,7 +506,7 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
   const current = useMemo(() => {
     const { fromTs, toTs } = rangeMs(from, to);
     return orders.filter((o) => {
-      const t = new Date(o.createdAt).getTime();
+      const t = new Date(orderDateOf(o)).getTime();
       if (t < fromTs || t > toTs) return false;
       return passesFilters(o, filters);
     });
@@ -505,7 +518,7 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
     const { fromTs, toTs } = rangeMs(from, to);
     const noStage = { ...filters, stages: new Set<string>(), statuses: new Set<string>() };
     return orders.filter((o) => {
-      const t = new Date(o.createdAt).getTime();
+      const t = new Date(orderDateOf(o)).getTime();
       if (t < fromTs || t > toTs) return false;
       return passesFilters(o, noStage);
     });
@@ -516,7 +529,7 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
     const r = priorRange(from, to);
     const { fromTs, toTs } = rangeMs(r.from, r.to);
     return orders.filter((o) => {
-      const t = new Date(o.createdAt).getTime();
+      const t = new Date(orderDateOf(o)).getTime();
       if (t < fromTs || t > toTs) return false;
       return passesFilters(o, filters);
     });
@@ -531,7 +544,7 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
     const map = new Map<string, { delivered: number; cancelled: number; inFlight: number }>();
     for (const k of buckets) map.set(k, { delivered: 0, cancelled: 0, inFlight: 0 });
     for (const o of current) {
-      const k = bucketKey(new Date(o.createdAt), granularity);
+      const k = bucketKey(new Date(orderDateOf(o)), granularity);
       const row = map.get(k);
       if (!row) continue;
       if (o.stage === "DELIVERED") row.delivered++;
@@ -545,7 +558,7 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
       const priorBuckets = enumerateBuckets(r.from, r.to, granularity);
       for (const k of priorBuckets) priorMap.set(k, 0);
       for (const o of prior) {
-        const k = bucketKey(new Date(o.createdAt), granularity);
+        const k = bucketKey(new Date(orderDateOf(o)), granularity);
         priorMap.set(k, (priorMap.get(k) ?? 0) + 1);
       }
     }
@@ -722,7 +735,7 @@ function computeKpis(orders: OrderShape[]): Kpis {
     for (const it of o.items) units += it.quantity;
     const ed = effectiveDeliveredAt(o);
     if (ed) {
-      const ms = new Date(ed).getTime() - new Date(o.createdAt).getTime();
+      const ms = new Date(ed).getTime() - new Date(orderDateOf(o)).getTime();
       if (ms > 0) {
         totalHrs += ms / 36e5;
         withDates++;
@@ -769,7 +782,7 @@ function computeFunnel(orders: OrderShape[]): { stages: FunnelStage[]; cancelled
     submitted++;
     const isCancelled = !!o.cancelledAt || o.stage === "CANCELLED";
     if (isCancelled) cancelled++;
-    const created = new Date(o.createdAt).getTime();
+    const created = new Date(orderDateOf(o)).getTime();
     if (o.printedAt) {
       printed++;
       printedHrs.push((new Date(o.printedAt).getTime() - created) / 36e5);
@@ -907,11 +920,11 @@ function rowContributions(o: OrderShape, dim: Dimension, args: BreakdownArgs): C
       return [{ rowKey: b.key, rowLabel: b.label, weight: 1 }];
     }
     case "dow": {
-      const d = new Date(o.createdAt).getDay();
+      const d = new Date(orderDateOf(o)).getUTCDay();
       return [{ rowKey: String(d), rowLabel: DOW_LABELS[d], weight: 1 }];
     }
     case "time": {
-      const k = bucketKey(new Date(o.createdAt), args.granularity);
+      const k = bucketKey(new Date(orderDateOf(o)), args.granularity);
       return [{ rowKey: k, rowLabel: bucketLabel(k, args.granularity), weight: 1 }];
     }
   }
@@ -934,7 +947,7 @@ function computeBreakdown(orders: OrderShape[], args: BreakdownArgs): BreakdownD
     let hasHrs = false;
     const ed = effectiveDeliveredAt(o);
     if (ed) {
-      const ms = new Date(ed).getTime() - new Date(o.createdAt).getTime();
+      const ms = new Date(ed).getTime() - new Date(orderDateOf(o)).getTime();
       if (ms > 0) {
         hrs = ms / 36e5;
         hasHrs = true;
@@ -1125,7 +1138,7 @@ function computeTopFacilities(orders: OrderShape[]): FacilityRow[] {
     for (const it of o.items) cur.units += it.quantity;
     const ed = effectiveDeliveredAt(o);
     if (ed) {
-      const ms = new Date(ed).getTime() - new Date(o.createdAt).getTime();
+      const ms = new Date(ed).getTime() - new Date(orderDateOf(o)).getTime();
       if (ms > 0) {
         cur.hrs += ms / 36e5;
         cur.hrsCount++;
