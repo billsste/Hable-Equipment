@@ -60,7 +60,7 @@ type Props = {
 // Per Brent 2026-06: the view-tab strip (Open / Out for Delivery / Delivered
 // / All) is gone — the chip-based filter bar handles every scope the tabs
 // covered (Delivery Status → Out for Delivery / Delivered, plus the rest).
-type SortKey = "orderNumber" | "orderType" | "patient" | "facility" | "csr" | "driver" | "orderDate";
+type SortKey = "orderNumber" | "orderType" | "patient" | "facility" | "csr" | "driver" | "orderDate" | "discharge";
 type SortDir = "asc" | "desc";
 
 // Order Date presets shown next to the date inputs. The "no filter" state is
@@ -408,11 +408,12 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
             <colgroup>
               <col style={{ width: 130 }} />
               <col style={{ width: 130 }} />
-              <col style={{ width: "22%" }} />
-              <col style={{ width: "22%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "20%" }} />
               <col style={{ width: 120 }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "14%" }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "13%" }} />
             </colgroup>
             <thead>
               <tr style={{ background: "#f6f9fc", borderBottom: "1px solid #e5edf5" }}>
@@ -421,6 +422,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
                 <Th sortKey="patient" sort={sort} onSort={toggleSort}>Patient</Th>
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
                 <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
+                <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Discharge Date</Th>
                 <Th sortKey="csr" sort={sort} onSort={toggleSort}>CSR</Th>
                 <Th sortKey="driver" sort={sort} onSort={toggleSort}>Driver</Th>
               </tr>
@@ -428,7 +430,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
+                  <td colSpan={8} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
                     No orders in this view.
                   </td>
                 </tr>
@@ -479,8 +481,8 @@ function Row({ order, onClick }: { order: OrderShape; mounted: boolean; onClick:
       onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
     >
       {/* Cell order mirrors the <colgroup>/<thead> contract above:
-          Order # → Order Type → Patient → Facility → Order Date → CSR → Driver.
-          Don't reorder one without the other two. */}
+          Order # → Order Type → Patient → Facility → Order Date → Discharge
+          Date → CSR → Driver. Don't reorder one without the other two. */}
       <Td>
         <span
           style={{
@@ -536,6 +538,9 @@ function Row({ order, onClick }: { order: OrderShape; mounted: boolean; onClick:
         <span style={{ color: "#273951", fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
           {formatOrderDate(orderDateOf(order))}
         </span>
+      </Td>
+      <Td>
+        <DischargeDateCell iso={order.dischargeDate} />
       </Td>
       <Td>
         {order.csrName ? (
@@ -1190,6 +1195,11 @@ function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): O
     switch (sort.key) {
       case "orderNumber": return o.orderNumber;
       case "orderDate":   return new Date(orderDateOf(o)).getTime();
+      // Discharge sorts chronologically; orders with no DC float to the
+      // bottom regardless of direction so the active set stays clustered.
+      case "discharge":   return o.dischargeDate
+        ? new Date(o.dischargeDate).getTime()
+        : (sort.dir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
       case "patient": return o.patientDisplay.toLowerCase();
       case "facility": return (o.facilityName ?? "").toLowerCase();
       case "orderType": return WORK_ORDER_TYPE_LABELS[o.workOrderType].toLowerCase();
@@ -1293,6 +1303,38 @@ function formatDc(iso: string | null): { dateLabel: string; urgency: DcUrgency }
   // as midnight UTC by pickDate, so this displays the date the user typed.
   const dateLabel = new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   return { dateLabel, urgency };
+}
+
+// Discharge Date column. Tints the date by dcUrgency so a glance down the
+// column surfaces overdue/imminent DCs without forcing the user to read
+// every value. Missing DC renders muted to keep the column quiet.
+const DC_URGENCY_COLORS: Record<DcUrgency, string> = {
+  overdue: "#b03238",  // red — past discharge
+  urgent:  "#b41850",  // deep pink — <3 days
+  warn:    "#9b6829",  // amber-brown — ≤7 days
+  ok:      "#273951",  // standard body
+  none:    "#94a3b8",  // muted — no DC on file
+};
+function DischargeDateCell({ iso }: { iso: string | null }) {
+  const { dateLabel, urgency } = formatDc(iso);
+  const color = DC_URGENCY_COLORS[urgency];
+  return (
+    <span
+      style={{
+        color,
+        fontFeatureSettings: '"tnum"',
+        whiteSpace: "nowrap",
+        fontWeight: urgency === "overdue" || urgency === "urgent" ? 500 : 400,
+      }}
+      title={
+        iso
+          ? `Discharge ${urgency === "overdue" ? "OVERDUE" : urgency === "urgent" ? "imminent (<3 days)" : urgency === "warn" ? "within a week" : "on file"}`
+          : "No discharge date on file"
+      }
+    >
+      {dateLabel}
+    </span>
+  );
 }
 
 // Full tabular export: one row per piece of equipment. An order with 3 items
