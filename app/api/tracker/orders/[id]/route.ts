@@ -20,13 +20,14 @@ import {
   ORDER_ACTIONS,
   ORDER_FIELD_LABELS,
   WORK_ORDER_TYPE_LABELS,
+  deriveDeliveryStatus,
   isValidAuthTransition,
   requiresReason,
   STATUS_LABELS,
 } from "@/lib/order-types";
 
 const VALID_WORK_ORDER_TYPES = Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderType[];
-import type { AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, Prisma, WorkOrderType } from "@prisma/client";
+import type { AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, Prisma, VerificationStatus, WorkOrderType } from "@prisma/client";
 
 const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE", "SCHEDULED", "ON_HOLD", "HELD_FOR_AUTH", "OUT_FOR_DELIVERY",
@@ -80,6 +81,7 @@ export async function PATCH(
   // Track post-update values alongside the Prisma payload so deriveStage gets
   // plain values instead of having to reverse-engineer the OrderUpdateInput.
   let nextStatus: OutcomeStatus = existing.status;
+  let nextVerificationStatus: VerificationStatus | null = existing.verificationStatus;
   let nextPrimary: string | null = existing.primaryInsuranceKey;
   let nextAuth: AuthStatus = existing.authStatus;
   let nextPrintedAt: Date | null = existing.printedAt;
@@ -210,6 +212,7 @@ export async function PATCH(
       : null;
     if (newVal !== existing.verificationStatus) {
       data.verificationStatus = newVal;
+      nextVerificationStatus = newVal;
       pushDiff(events, who, "Verification status", existing.verificationStatus ?? "", newVal ?? "");
     }
   }
@@ -425,12 +428,13 @@ export async function PATCH(
   }
 
   let itemsChanged = false;
-  let newItemRows: Array<{ equipmentId: string; quantity: number; driverId: number | null; completedAt: Date | null; doorTagCount: number }> = [];
+  let newItemRows: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: Date | null; completedAt: Date | null; doorTagCount: number }> = [];
   if ("items" in body && Array.isArray(body.items)) {
     newItemRows = (body.items as Array<{
       equipmentId?: unknown;
       quantity?: unknown;
       driverId?: unknown;
+      scheduledDeliveryDate?: unknown;
       completedAt?: unknown;
       doorTagCount?: unknown;
     }>)
@@ -439,6 +443,9 @@ export async function PATCH(
         equipmentId: it.equipmentId as string,
         quantity: typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : 1,
         driverId: typeof it.driverId === "number" ? it.driverId : null,
+        scheduledDeliveryDate: typeof it.scheduledDeliveryDate === "string" && it.scheduledDeliveryDate
+          ? new Date(it.scheduledDeliveryDate + "T00:00:00.000Z")
+          : null,
         completedAt: typeof it.completedAt === "string" && it.completedAt
           ? new Date(it.completedAt + "T00:00:00.000Z")
           : null,
@@ -463,12 +470,34 @@ export async function PATCH(
     }
   }
 
-  // deriveStage needs per-item state — use the new rows when items are being
-  // replaced in this request, otherwise fall back to existing.items.
+  // deriveStage + deriveDeliveryStatus need per-item state — use the new
+  // rows when items are being replaced in this request, otherwise fall back
+  // to existing.items.
   const effectiveItems = itemsChanged ? newItemRows : existing.items.map((it) => ({
     driverId: it.driverId,
+    scheduledDeliveryDate: it.scheduledDeliveryDate,
     completedAt: it.completedAt,
   }));
+
+  // Auto-advance the Delivery Status along the in-flight ladder based on
+  // verification + item-level state. Paused/terminal statuses short-circuit
+  // (the helper returns them unchanged) so manual ON_HOLD/CANCELLED/etc.
+  // are sticky. Emit a history line when the derive actually changes the
+  // status so the move is visible on the History tab.
+  const derivedStatus = deriveDeliveryStatus({
+    currentStatus: nextStatus,
+    verificationStatus: nextVerificationStatus,
+    items: effectiveItems,
+  });
+  if (derivedStatus !== nextStatus) {
+    data.status = derivedStatus;
+    pushDiff(events, who, "Delivery status", STATUS_LABELS[nextStatus], STATUS_LABELS[derivedStatus]);
+    nextStatus = derivedStatus;
+    // DELIVERED via auto-promotion shouldn't accidentally trip the
+    // cancelledAt timestamp path — that's gated on the user explicitly
+    // choosing a cancel-family status earlier in this handler.
+  }
+
   data.stage = deriveStage({
     current: existing.stage,
     workOrderType: nextWorkOrderType,
@@ -508,6 +537,7 @@ export async function PATCH(
             equipmentId: it.equipmentId,
             quantity: it.quantity,
             driverId: it.driverId,
+            scheduledDeliveryDate: it.scheduledDeliveryDate,
             completedAt: it.completedAt,
             doorTagCount: it.doorTagCount,
           })),
@@ -565,6 +595,7 @@ async function perItemEventDescriptions(
     equipmentId: string;
     driverId: number | null;
     driver: { id: number; name: string } | null;
+    scheduledDeliveryDate: Date | null;
     completedAt: Date | null;
     doorTagCount: number;
     equipment: { abbreviation: string; name: string };
@@ -572,6 +603,7 @@ async function perItemEventDescriptions(
   next: ReadonlyArray<{
     equipmentId: string;
     driverId: number | null;
+    scheduledDeliveryDate: Date | null;
     completedAt: Date | null;
     doorTagCount: number;
   }>,
@@ -617,6 +649,19 @@ async function perItemEventDescriptions(
         who,
         action: "Driver assigned",
         detail: `${label}: ${oldName} → ${newName}`,
+      });
+    }
+
+    // Scheduled delivery date stamp / clear
+    const prevSched = prev.scheduledDeliveryDate?.toISOString().slice(0, 10) ?? null;
+    const nextSched = it.scheduledDeliveryDate?.toISOString().slice(0, 10) ?? null;
+    if (prevSched !== nextSched) {
+      events.push({
+        who,
+        action: nextSched ? "Scheduled delivery date set" : "Scheduled delivery date cleared",
+        detail: nextSched
+          ? `${label}: ${nextSched}${prevSched ? ` (was ${prevSched})` : ""}`
+          : `${label}: ${prevSched ?? "—"} cleared`,
       });
     }
 

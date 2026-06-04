@@ -73,11 +73,12 @@ type DatePreset = "all" | "7d" | "30d" | "90d" | "ytd" | "custom";
 // The user picks which date column the range applies to. "orderDate" keys
 // off the row's creation timestamp (matching the "Order Date" table column);
 // the other three filter on the form-entered scheduling dates.
-type DateField = "orderDate" | "discharge" | "requested" | "dos";
+type DateField = "orderDate" | "discharge" | "requested" | "scheduled" | "dos";
 const DATE_FIELD_OPTIONS: { value: DateField; label: string }[] = [
   { value: "orderDate", label: "Order Date" },
   { value: "discharge", label: "Scheduled Discharge Date" },
   { value: "requested", label: "Requested Delivery Date" },
+  { value: "scheduled", label: "Scheduled Delivery Date" },
   { value: "dos",       label: "DOS Submitted" },
 ];
 // "Order Date" everywhere in the Tracker means the date the call came in
@@ -88,12 +89,20 @@ function orderDateOf(o: OrderShape): string {
   return o.callReceivedDate ?? o.createdAt;
 }
 
-function pickDateForField(o: OrderShape, field: DateField): string | null {
+// Returns every ISO date relevant to `field` on this order. Order-level
+// fields (Order Date / Discharge / Requested / DOS) yield 0 or 1; per-item
+// fields (Scheduled Delivery Date) yield 0..N, one per item with a value
+// set. The filter accepts the order when ANY returned date hits the range.
+function isoDatesForField(o: OrderShape, field: DateField): string[] {
   switch (field) {
-    case "orderDate": return orderDateOf(o);
-    case "discharge": return o.dischargeDate;
-    case "requested": return o.requestedDeliveryDate;
-    case "dos":       return o.dosSubmitted;
+    case "orderDate": return [orderDateOf(o)];
+    case "discharge": return o.dischargeDate ? [o.dischargeDate] : [];
+    case "requested": return o.requestedDeliveryDate ? [o.requestedDeliveryDate] : [];
+    case "dos":       return o.dosSubmitted ? [o.dosSubmitted] : [];
+    case "scheduled":
+      return o.items
+        .map((it) => it.scheduledDeliveryDate)
+        .filter((iso): iso is string => !!iso);
   }
 }
 function labelForDateField(field: DateField): string {
@@ -1162,14 +1171,17 @@ function filterOrders(
     // Compare the YYYY-MM-DD slice in UTC so the inclusive boundary matches
     // what the user typed in the date inputs (no TZ drift on either end).
     // The compared column comes from `dateField` — Order Date / Discharge /
-    // Requested Delivery / DOS Submitted. Orders missing that date drop out
-    // of the range filter; this matches the form-entered "blank" semantics.
+    // Requested Delivery / Scheduled Delivery (per-item) / DOS Submitted.
+    // Orders with no candidate date drop out; per-item fields pass when ANY
+    // item's date hits the range.
     const { from, to } = fields.dateRange;
     list = list.filter((o) => {
-      const iso = pickDateForField(o, fields.dateField);
-      if (!iso) return false;
-      const ymd = iso.slice(0, 10);
-      return ymd >= from && ymd <= to;
+      const candidates = isoDatesForField(o, fields.dateField);
+      if (candidates.length === 0) return false;
+      return candidates.some((iso) => {
+        const ymd = iso.slice(0, 10);
+        return ymd >= from && ymd <= to;
+      });
     });
   }
 
@@ -1369,7 +1381,7 @@ function exportCsv(rows: OrderShape[]): void {
     "Fulfillment Companies", "Notes",
     // per-item slice — one row per item
     "Driver", "Item", "Quantity", "Category", "Abbreviation",
-    "HCPCS Code", "Completed Date", "Door Tags",
+    "HCPCS Code", "Scheduled Delivery Date", "Completed Date", "Door Tags",
     // bookkeeping
     "Created At", "Updated At",
   ];
@@ -1424,7 +1436,9 @@ function exportCsv(rows: OrderShape[]): void {
     const trailingColumns: string[] = [fmtDate(o.createdAt), fmtDate(o.updatedAt)];
 
     if (o.items.length === 0) {
-      data.push([...orderColumns, "", "", "", "", "", "", "", "", ...trailingColumns]);
+      // 9 placeholders matches the per-item header span: Driver, Item,
+      // Quantity, Category, Abbreviation, HCPCS, Scheduled, Completed, Door Tags
+      data.push([...orderColumns, "", "", "", "", "", "", "", "", "", ...trailingColumns]);
       continue;
     }
     for (const it of o.items) {
@@ -1436,6 +1450,7 @@ function exportCsv(rows: OrderShape[]): void {
         it.category ?? "",
         it.abbreviation ?? "",
         it.hcpcsCode ?? "",
+        fmtDate(it.scheduledDeliveryDate),
         fmtDate(it.completedAt),
         String(it.doorTagCount ?? 0),
         ...trailingColumns,

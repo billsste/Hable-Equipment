@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   authAgingDays,
   dcUrgency,
+  deriveDeliveryStatus,
   deriveStage,
   isBlockingStatus,
   isServiceCallType,
@@ -233,5 +234,126 @@ describe("isServiceCallType", () => {
     expect(isServiceCallType("EQUIPMENT_MOVE")).toBe(true);
     expect(isServiceCallType("EXCHANGE")).toBe(true);
     expect(isServiceCallType("FACILITY_DELIVERY")).toBe(true);
+  });
+});
+
+describe("deriveDeliveryStatus", () => {
+  const baseItem = { driverId: null as number | null, scheduledDeliveryDate: null as Date | string | null, completedAt: null as Date | string | null };
+
+  it("returns ACTIVE when nothing has progressed and no verification ready", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "ACTIVE",
+        verificationStatus: null,
+        items: [{ ...baseItem }],
+      }),
+    ).toBe("ACTIVE");
+  });
+
+  it("advances to READY_TO_SCHEDULE when verification is READY_FOR_DELIVERY", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "ACTIVE",
+        verificationStatus: "READY_FOR_DELIVERY",
+        items: [{ ...baseItem }],
+      }),
+    ).toBe("READY_TO_SCHEDULE");
+  });
+
+  it("advances to SCHEDULED only when EVERY item has driver + scheduled date", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "READY_TO_SCHEDULE",
+        verificationStatus: "READY_FOR_DELIVERY",
+        items: [
+          { driverId: 1, scheduledDeliveryDate: "2026-06-10", completedAt: null },
+          { driverId: 2, scheduledDeliveryDate: "2026-06-11", completedAt: null },
+        ],
+      }),
+    ).toBe("SCHEDULED");
+  });
+
+  it("does NOT advance to SCHEDULED if any item is missing driver or scheduled date", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "READY_TO_SCHEDULE",
+        verificationStatus: "READY_FOR_DELIVERY",
+        items: [
+          { driverId: 1, scheduledDeliveryDate: "2026-06-10", completedAt: null },
+          { driverId: 2, scheduledDeliveryDate: null, completedAt: null },
+        ],
+      }),
+    ).toBe("READY_TO_SCHEDULE");
+  });
+
+  it("advances to DELIVERED when EVERY item has completedAt", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "SCHEDULED",
+        verificationStatus: "READY_FOR_DELIVERY",
+        items: [
+          { driverId: 1, scheduledDeliveryDate: "2026-06-10", completedAt: "2026-06-10" },
+          { driverId: 2, scheduledDeliveryDate: "2026-06-11", completedAt: "2026-06-11" },
+        ],
+      }),
+    ).toBe("DELIVERED");
+  });
+
+  it("keeps ON_HOLD sticky — auto never overrides paused", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "ON_HOLD",
+        verificationStatus: "READY_FOR_DELIVERY",
+        items: [
+          { driverId: 1, scheduledDeliveryDate: "2026-06-10", completedAt: "2026-06-10" },
+        ],
+      }),
+    ).toBe("ON_HOLD");
+  });
+
+  it("keeps HELD_FOR_AUTH sticky — auto never overrides paused", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "HELD_FOR_AUTH",
+        verificationStatus: "READY_FOR_DELIVERY",
+        items: [
+          { driverId: 1, scheduledDeliveryDate: "2026-06-10", completedAt: null },
+        ],
+      }),
+    ).toBe("HELD_FOR_AUTH");
+  });
+
+  it("keeps CANCELLED sticky even when items would otherwise promote", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "CANCELLED",
+        verificationStatus: "READY_FOR_DELIVERY",
+        items: [
+          { driverId: 1, scheduledDeliveryDate: "2026-06-10", completedAt: "2026-06-10" },
+        ],
+      }),
+    ).toBe("CANCELLED");
+  });
+
+  it("auto-demotes back down the ladder when verification regresses", () => {
+    // Verification was Ready, status auto-bumped to READY_TO_SCHEDULE.
+    // Verification flips to ON_HOLD — auto should walk back to ACTIVE.
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "READY_TO_SCHEDULE",
+        verificationStatus: "ON_HOLD",
+        items: [{ ...baseItem }],
+      }),
+    ).toBe("ACTIVE");
+  });
+
+  it("treats empty items list as not-yet-scheduled (stays ACTIVE / READY_TO_SCHEDULE)", () => {
+    expect(
+      deriveDeliveryStatus({
+        currentStatus: "ACTIVE",
+        verificationStatus: null,
+        items: [],
+      }),
+    ).toBe("ACTIVE");
   });
 });

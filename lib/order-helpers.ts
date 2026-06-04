@@ -203,6 +203,7 @@ export function toOrderShape(o: OrderWithIncludes): OrderShape {
       hcpcsCode: it.equipment.hcpcsCode,
       driverId: it.driverId ?? null,
       driverName: it.driver?.name ?? null,
+      scheduledDeliveryDate: it.scheduledDeliveryDate?.toISOString() ?? null,
       completedAt: it.completedAt?.toISOString() ?? null,
       doorTagCount: it.doorTagCount ?? 0,
     })),

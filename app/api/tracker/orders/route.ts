@@ -22,6 +22,7 @@ import {
   ORDER_FIELD_LABELS,
   STATUS_LABELS,
   WORK_ORDER_TYPE_LABELS,
+  deriveDeliveryStatus,
   isServiceCallType,
   requiresReason,
 } from "@/lib/order-types";
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
         equipmentId?: unknown;
         quantity?: unknown;
         driverId?: unknown;
+        scheduledDeliveryDate?: unknown;
         completedAt?: unknown;
         doorTagCount?: unknown;
       }>)
@@ -103,6 +105,9 @@ export async function POST(request: Request) {
           equipmentId: it.equipmentId as string,
           quantity: typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : 1,
           driverId: typeof it.driverId === "number" ? it.driverId : null,
+          scheduledDeliveryDate: typeof it.scheduledDeliveryDate === "string" && it.scheduledDeliveryDate
+            ? new Date(it.scheduledDeliveryDate + "T00:00:00.000Z")
+            : null,
           completedAt: typeof it.completedAt === "string" && it.completedAt
             ? new Date(it.completedAt + "T00:00:00.000Z")
             : null,
@@ -152,9 +157,22 @@ export async function POST(request: Request) {
 
   // Outcome status governs whether the order is parked (cancelledAt) or
   // delivered. Mirror the PATCH route's resolution so create + edit agree.
-  const status: OutcomeStatus = VALID_OUTCOME_STATUSES.includes(body.status as OutcomeStatus)
+  const rawStatus: OutcomeStatus = VALID_OUTCOME_STATUSES.includes(body.status as OutcomeStatus)
     ? (body.status as OutcomeStatus)
     : "ACTIVE";
+  // Auto-advance along the in-flight ladder based on items + verification.
+  // If the client explicitly picked a paused/terminal value (ON_HOLD,
+  // HELD_FOR_AUTH, CANCELLED, DELIVERED, etc.), deriveDeliveryStatus returns
+  // it unchanged — manual override wins.
+  const status: OutcomeStatus = deriveDeliveryStatus({
+    currentStatus: rawStatus,
+    verificationStatus,
+    items: initialItems.map((it) => ({
+      driverId: it.driverId,
+      scheduledDeliveryDate: it.scheduledDeliveryDate,
+      completedAt: it.completedAt,
+    })),
+  });
   let cancellationReason: string | null = null;
   let cancelledAt: Date | null = null;
   if (status !== "ACTIVE") {
@@ -309,6 +327,7 @@ export async function POST(request: Request) {
                   equipmentId: it.equipmentId,
                   quantity: it.quantity,
                   driverId: it.driverId,
+                  scheduledDeliveryDate: it.scheduledDeliveryDate,
                   completedAt: it.completedAt,
                   doorTagCount: it.doorTagCount,
                 })),

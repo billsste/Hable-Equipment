@@ -287,7 +287,7 @@ function formatDelta(curr: number, prior: number): { text: string; dir: "up" | "
   return { text: `${sign}${(pct * 100).toFixed(1)}%`, dir };
 }
 
-type Dimension = "facility" | "driver" | "company" | "insurance" | "category" | "item" | "stage" | "status" | "coinsurance" | "deductible" | "dow" | "time";
+type Dimension = "facility" | "driver" | "company" | "insurance" | "category" | "item" | "stage" | "status" | "coinsurance" | "deductible" | "dow" | "time" | "scheduledTime";
 type Metric = "orders" | "units" | "delivered" | "cancelled" | "avgHours" | "cancelRate";
 
 const DIMENSION_OPTIONS: Array<{ value: Dimension; label: string }> = [
@@ -304,7 +304,8 @@ const DIMENSION_OPTIONS: Array<{ value: Dimension; label: string }> = [
   { value: "coinsurance", label: "Coinsurance %" },
   { value: "deductible", label: "Deductible amount" },
   { value: "dow", label: "Day of week" },
-  { value: "time", label: "Time bucket" },
+  { value: "time", label: "Time bucket (Order Date)" },
+  { value: "scheduledTime", label: "Time bucket (Scheduled Delivery)" },
 ];
 
 const METRIC_OPTIONS: Array<{ value: Metric; label: string }> = [
@@ -926,6 +927,24 @@ function rowContributions(o: OrderShape, dim: Dimension, args: BreakdownArgs): C
     case "time": {
       const k = bucketKey(new Date(orderDateOf(o)), args.granularity);
       return [{ rowKey: k, rowLabel: bucketLabel(k, args.granularity), weight: 1 }];
+    }
+    case "scheduledTime": {
+      // Per-item scheduled delivery date — one contribution per item that
+      // has a scheduled date set. Items without one don't show up in this
+      // breakdown; the user can see "how many items are scheduled in week
+      // X" without the unscheduled items polluting the buckets.
+      const seen = new Map<string, number>();
+      for (const it of o.items) {
+        if (!it.scheduledDeliveryDate) continue;
+        const k = bucketKey(new Date(it.scheduledDeliveryDate), args.granularity);
+        seen.set(k, (seen.get(k) ?? 0) + it.quantity);
+      }
+      if (seen.size === 0) return [];
+      return Array.from(seen.entries()).map(([k, qty]) => ({
+        rowKey: k,
+        rowLabel: bucketLabel(k, args.granularity),
+        weight: qty,
+      }));
     }
   }
 }

@@ -59,6 +59,9 @@ export type OrderShape = {
     // delivers chairs" model. Both nullable while in flight.
     driverId: number | null;
     driverName: string | null;
+    // Per-item scheduled delivery date — drives the Delivery Status
+    // auto-promotion ladder in deriveDeliveryStatus().
+    scheduledDeliveryDate: string | null;
     completedAt: string | null;
     // Per-item door-tag attempts. Increments when a driver leaves a tag for
     // this specific line; resets to 0 on Stage 1 equipment changes.
@@ -118,12 +121,65 @@ export function deriveStage(input: {
   return input.current === "INTAKE_OFF_RIP" ? "INTAKE_OFF_RIP" : "INTAKE_VERIFICATION";
 }
 
+// Auto-promotion ladder for the Order.status (Delivery Status) field.
+// Brent 2026-06: Delivery Status now mirrors item-level state so dispatchers
+// don't have to remember to flip it manually.
+//
+//   verification = READY_FOR_DELIVERY → at least READY_TO_SCHEDULE
+//   every item has driverId + scheduledDeliveryDate → SCHEDULED
+//   every item has completedAt → DELIVERED
+//
+// Paused / terminal states (ON_HOLD, HELD_FOR_AUTH, CANCELLED, DELIVERED,
+// LOOSE_ENDS / TRANSFERRED / REJECTED / WRITE_OFF) are sticky — auto only
+// runs when the current value is in {ACTIVE, READY_TO_SCHEDULE, SCHEDULED}.
+// Once paused, a human has to clear the pause before auto resumes; once
+// auto-promotes to DELIVERED that's terminal too. This keeps a CSR's
+// explicit "on hold" decision from being silently overwritten by a driver
+// assignment.
+export function deriveDeliveryStatus(input: {
+  currentStatus: OutcomeStatus;
+  verificationStatus: VerificationStatus | null;
+  items: ReadonlyArray<{
+    driverId: number | null;
+    scheduledDeliveryDate: Date | string | null;
+    completedAt: Date | string | null;
+  }>;
+}): OutcomeStatus {
+  if (!AUTO_DELIVERY_STATUS_ELIGIBLE.includes(input.currentStatus)) {
+    return input.currentStatus;
+  }
+  const items = input.items;
+  if (items.length > 0 && items.every((it) => it.completedAt != null)) {
+    return "DELIVERED";
+  }
+  if (
+    items.length > 0 &&
+    items.every((it) => it.driverId != null && it.scheduledDeliveryDate != null)
+  ) {
+    return "SCHEDULED";
+  }
+  if (input.verificationStatus === "READY_FOR_DELIVERY") {
+    return "READY_TO_SCHEDULE";
+  }
+  return "ACTIVE";
+}
+
 // "Still moving toward delivery" — these statuses mean the order is in
 // flight (TBD = default, SCHEDULED = planned, OUT_FOR_DELIVERY = driver
 // out, DOOR_TAG = attempted). DELIVERED is intentionally NOT in this set:
 // it's terminal (success).
 const IN_FLIGHT_STATUSES: ReadonlyArray<OutcomeStatus> = [
-  "ACTIVE", "SCHEDULED", "OUT_FOR_DELIVERY", "DOOR_TAG",
+  "ACTIVE", "READY_TO_SCHEDULE", "SCHEDULED", "OUT_FOR_DELIVERY", "DOOR_TAG",
+];
+
+// Statuses where deriveDeliveryStatus() may auto-advance the order along
+// the in-flight ladder (TBD → Ready to Schedule → Scheduled for Delivery →
+// Delivered). Paused (ON_HOLD / HELD_FOR_AUTH) and terminal (CANCELLED /
+// LOOSE_ENDS / TRANSFERRED / REJECTED / WRITE_OFF / DELIVERED) are sticky —
+// a human has to un-set them. DELIVERED is intentionally NOT eligible
+// either (terminal once auto-promoted there).
+const AUTO_DELIVERY_STATUS_ELIGIBLE: ReadonlyArray<OutcomeStatus> = [
+  "ACTIVE", "READY_TO_SCHEDULE", "SCHEDULED",
 ];
 
 // Paused (not terminal) — order can come back to in-flight. ON_HOLD is
@@ -274,7 +330,8 @@ export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
 // this picker is the manual outcome flag.
 export const STATUS_LABELS: Record<OutcomeStatus, string> = {
   ACTIVE: "TBD",
-  SCHEDULED: "Scheduled",
+  READY_TO_SCHEDULE: "Ready to Schedule",
+  SCHEDULED: "Scheduled for Delivery",
   ON_HOLD: "On Hold",
   HELD_FOR_AUTH: "Held for Authorization",
   OUT_FOR_DELIVERY: "Out for Delivery",
@@ -294,7 +351,8 @@ export const STATUS_LABELS: Record<OutcomeStatus, string> = {
 // it's outside this set so a user editing a legacy row doesn't see "blank".
 export const DELIVERY_STATUS_PICKER_VALUES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE",            // TBD
-  "SCHEDULED",
+  "READY_TO_SCHEDULE",
+  "SCHEDULED",         // "Scheduled for Delivery"
   "ON_HOLD",
   "HELD_FOR_AUTH",
   "OUT_FOR_DELIVERY",
@@ -320,7 +378,8 @@ export const AUTH_PICKER_VALUES: ReadonlyArray<AuthStatus> = [
 
 export const STATUS_COLORS: Record<OutcomeStatus, { bg: string; color: string }> = {
   ACTIVE:           { bg: "rgba(83,58,253,0.10)",   color: "#4434d4" },
-  SCHEDULED:        { bg: "rgba(40,116,173,0.14)",  color: "#1f5e8a" },
+  READY_TO_SCHEDULE:{ bg: "rgba(40,116,173,0.10)",  color: "#2874ad" },
+  SCHEDULED:        { bg: "rgba(40,116,173,0.18)",  color: "#1f5e8a" },
   ON_HOLD:          { bg: "rgba(245,158,11,0.16)",  color: "#9b6829" },
   HELD_FOR_AUTH:    { bg: "rgba(234,34,97,0.10)",   color: "#b41850" },
   OUT_FOR_DELIVERY: { bg: "rgba(155,104,41,0.18)",  color: "#7a5320" },
@@ -371,6 +430,7 @@ export const ORDER_FIELD_LABELS = {
   callReceivedDate: "Call received date",
   dischargeDate: "Discharge date",
   requestedDeliveryDate: "Requested delivery date",
+  scheduledDeliveryDate: "Scheduled delivery date",
   dosSubmitted: "DOS submitted",
   workOrderType: "Work order type",
 } as const;

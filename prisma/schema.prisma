@@ -259,6 +259,7 @@ enum HandlerType {
 // existing row that still uses them, but the picker filters them out.
 enum OutcomeStatus {
   ACTIVE
+  READY_TO_SCHEDULE
   SCHEDULED
   ON_HOLD
   HELD_FOR_AUTH
@@ -374,6 +375,10 @@ model OrderItem {
   // every item in prisma/backfills/.
   driverId    Int?
   driver      User?     @relation("OrderItemDriver", fields: [driverId], references: [id])
+  // Per-item scheduled delivery date — Brent 2026-06: drives the
+  // Delivery Status auto-promotion ladder (every item with driver +
+  // scheduledDeliveryDate set ⇒ Order.status = SCHEDULED).
+  scheduledDeliveryDate DateTime?
   completedAt DateTime?
 
   // Per-item door-tag count. One delivery attempt that left a door tag for
