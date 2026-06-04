@@ -121,11 +121,12 @@ export function deriveStage(input: {
   return input.current === "INTAKE_OFF_RIP" ? "INTAKE_OFF_RIP" : "INTAKE_VERIFICATION";
 }
 
-// "Still moving toward delivery" — these three statuses mean the order is
-// in flight (TBD = default, OUT_FOR_DELIVERY = driver out, DOOR_TAG = attempted).
-// DELIVERED is intentionally NOT in this set: it's terminal (success).
+// "Still moving toward delivery" — these statuses mean the order is in
+// flight (TBD = default, SCHEDULED = planned, OUT_FOR_DELIVERY = driver
+// out, DOOR_TAG = attempted). DELIVERED is intentionally NOT in this set:
+// it's terminal (success).
 const IN_FLIGHT_STATUSES: ReadonlyArray<OutcomeStatus> = [
-  "ACTIVE", "OUT_FOR_DELIVERY", "DOOR_TAG",
+  "ACTIVE", "SCHEDULED", "OUT_FOR_DELIVERY", "DOOR_TAG",
 ];
 
 // Paused (not terminal) — order can come back to in-flight. ON_HOLD is
@@ -276,6 +277,7 @@ export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
 // this picker is the manual outcome flag.
 export const STATUS_LABELS: Record<OutcomeStatus, string> = {
   ACTIVE: "TBD",
+  SCHEDULED: "Scheduled",
   ON_HOLD: "On Hold",
   HELD_FOR_AUTH: "Held for Authorization",
   OUT_FOR_DELIVERY: "Out for Delivery",
@@ -295,6 +297,7 @@ export const STATUS_LABELS: Record<OutcomeStatus, string> = {
 // it's outside this set so a user editing a legacy row doesn't see "blank".
 export const DELIVERY_STATUS_PICKER_VALUES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE",            // TBD
+  "SCHEDULED",
   "ON_HOLD",
   "HELD_FOR_AUTH",
   "OUT_FOR_DELIVERY",
@@ -320,6 +323,7 @@ export const AUTH_PICKER_VALUES: ReadonlyArray<AuthStatus> = [
 
 export const STATUS_COLORS: Record<OutcomeStatus, { bg: string; color: string }> = {
   ACTIVE:           { bg: "rgba(83,58,253,0.10)",   color: "#4434d4" },
+  SCHEDULED:        { bg: "rgba(40,116,173,0.14)",  color: "#1f5e8a" },
   ON_HOLD:          { bg: "rgba(245,158,11,0.16)",  color: "#9b6829" },
   HELD_FOR_AUTH:    { bg: "rgba(234,34,97,0.10)",   color: "#b41850" },
   OUT_FOR_DELIVERY: { bg: "rgba(155,104,41,0.18)",  color: "#7a5320" },

@@ -194,17 +194,18 @@ export async function getSessionUser(request: Request): Promise<SessionUser | nu
   };
 }
 
-// Returns user only if their role is in `allowed`. Use for role guards in routes.
+// Originally a role-gate. Per Brent (2026-06): every authenticated user can
+// see and edit everything in the tool — no role-based 403s. The `allowed`
+// parameter is kept for callsite compatibility but is ignored; only the
+// session check applies. Re-introduce strict role gating here if the
+// security model ever needs it.
 export async function requireRole(
   request: Request,
-  allowed: ReadonlyArray<User["role"]>,
+  _allowed: ReadonlyArray<User["role"]>,
 ): Promise<{ user: User } | { error: Response }> {
   const user = await getSessionUser(request);
   if (!user) {
     return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-  if (!allowed.includes(user.role)) {
-    return { error: Response.json({ error: "Forbidden" }, { status: 403 }) };
   }
   return { user };
 }

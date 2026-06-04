@@ -80,7 +80,9 @@ export default function UsersClient({
     downloadCsv(`users-${new Date().toISOString().slice(0, 10)}.csv`, rows);
   }
 
-  const canModify = (user: SafeUser) => user.id !== me.id && me.role === "supplier";
+  // Per Brent 2026-06: every authenticated user can manage every other
+  // user. Self-edit guard stays — prevents accidental self-demotion.
+  const canModify = (user: SafeUser) => user.id !== me.id;
 
   return (
     <div className="p-4 md:p-6">

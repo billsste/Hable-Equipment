@@ -15,7 +15,8 @@ export default async function InventoryPage() {
 
   const me = await db.user.findUnique({ where: { id: session.userId } });
   if (!me) redirect("/login");
-  if (me.role !== "supplier" && me.role !== "driver") redirect("/tracker");
+  // Role gate dropped per Brent 2026-06 — every authenticated user can
+  // view Inventory.
 
   // One query, two views: pull active item-kind equipment with their serials
   // included, then derive both the stock-by-equipment summary and the flat

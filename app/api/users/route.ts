@@ -8,7 +8,7 @@ const VALID_ROLES: UserRole[] = ["supplier", "driver", "csr"];
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (user.role !== "supplier") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // Role gate dropped per Brent 2026-06 — any authenticated user.
 
   const rows = await db.user.findMany({
     orderBy: [{ active: "desc" }, { name: "asc" }],
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (user.role !== "supplier") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // Role gate dropped per Brent 2026-06 — any authenticated user.
 
   try {
     const { name, email, password, role, roles } = await request.json();

@@ -55,7 +55,10 @@ export default function AdminSidebar({ user }: { user: SidebarUser }) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(user.role));
+  // Per Brent 2026-06: every nav item is visible to every authenticated
+  // user — no role-based hiding. Per-item roles are kept on NAV_ITEMS for
+  // documentation but ignored at render.
+  const visibleItems = NAV_ITEMS;
   const initials = user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 
   useEffect(() => {

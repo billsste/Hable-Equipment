@@ -12,7 +12,7 @@ export async function PATCH(
 ) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (user.role !== "supplier") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // Role gate dropped per Brent 2026-06 — any authenticated user.
 
   const { id } = await params;
   const targetId = Number(id);
@@ -121,7 +121,7 @@ export async function DELETE(
 ) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (user.role !== "supplier") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // Role gate dropped per Brent 2026-06 — any authenticated user.
 
   const { id } = await params;
   const targetId = Number(id);

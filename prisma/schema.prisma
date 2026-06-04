@@ -259,6 +259,7 @@ enum HandlerType {
 // existing row that still uses them, but the picker filters them out.
 enum OutcomeStatus {
   ACTIVE
+  SCHEDULED
   ON_HOLD
   HELD_FOR_AUTH
   OUT_FOR_DELIVERY

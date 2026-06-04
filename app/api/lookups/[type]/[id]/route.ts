@@ -8,10 +8,6 @@ export async function PATCH(
 ) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (user.role !== "supplier") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const { type, id } = await params;
   const handler = LOOKUP_HANDLERS[type];
   if (!handler) return NextResponse.json({ error: "Unknown type" }, { status: 404 });
@@ -39,10 +35,6 @@ export async function DELETE(
 ) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (user.role !== "supplier") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const { type, id } = await params;
   const handler = LOOKUP_HANDLERS[type];
   if (!handler) return NextResponse.json({ error: "Unknown type" }, { status: 404 });

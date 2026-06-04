@@ -20,7 +20,8 @@ export default async function ReportingPage({
 
   const me = await db.user.findUnique({ where: { id: session.userId } });
   if (!me) redirect("/login");
-  if (!me.roles.includes("supplier")) redirect("/tracker");
+  // Role gate dropped per Brent 2026-06 — every authenticated user can
+  // view Reporting.
 
   const [orders, insurance, companies, equipment, sp] = await Promise.all([
     db.order.findMany({

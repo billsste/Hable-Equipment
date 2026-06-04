@@ -47,7 +47,8 @@ const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
 
 // `dispatcher` is legacy (renamed to `driver` per Brent 2026-06); both are
 // accepted until the backfill + commit B retire the old role.
-const ALLOWED_CREATE_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver"];
+// Role gate dropped per Brent 2026-06 — any authenticated user can create
+// an order. Kept the constant declaration removed to avoid dead code.
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
@@ -83,9 +84,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!ALLOWED_CREATE_ROLES.includes(user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
   let body: Record<string, unknown>;
   try {

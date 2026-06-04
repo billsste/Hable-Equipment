@@ -151,6 +151,9 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
   const [pendingDocFilter, setPendingDocFilter] = useState("");
   const [verificationFilter, setVerificationFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  // Driver filter — value is the driver's user-id as a string ("" = any).
+  // Matches orders where any item is assigned to the selected driver.
+  const [driverFilter, setDriverFilter] = useState("");
   // Door tag presence: "" = don't filter; "yes" = any item has ≥1 tag;
   // "no" = every item has 0 tags. Driver tag-count column is per-item.
   const [doorTagFilter, setDoorTagFilter] = useState<"" | "yes" | "no">("");
@@ -182,14 +185,14 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
       sortOrders(
         filterOrders(
           orders, view, search,
-          { authFilter, pendingDocFilter, verificationFilter, statusFilter, doorTagFilter, dateRange, dateField: dateFieldFilter },
+          { authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, doorTagFilter, dateRange, dateField: dateFieldFilter },
         ),
         sort,
       ),
-    [orders, view, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, doorTagFilter, dateRange, dateFieldFilter, sort],
+    [orders, view, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, doorTagFilter, dateRange, dateFieldFilter, sort],
   );
   const hasFieldFilter =
-    authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || doorTagFilter !== "" || datePreset !== "all";
+    authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || driverFilter !== "" || doorTagFilter !== "" || datePreset !== "all";
   const counts = useMemo(() => {
     const m: Record<ViewKey, number> = {
       all: orders.length,
@@ -254,6 +257,10 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             }
             if (verificationFilter) chips.push(`Order Status ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
             if (statusFilter) chips.push(`Delivery ${STATUS_LABELS[statusFilter as OutcomeStatus]}`);
+            if (driverFilter) {
+              const dn = lookups.dispatchers.find((d) => String(d.id) === driverFilter)?.name ?? driverFilter;
+              chips.push(`Driver ${dn}`);
+            }
             if (doorTagFilter === "yes") chips.push("Door Tags: any");
             else if (doorTagFilter === "no") chips.push("Door Tags: none");
             if (search.trim()) chips.push(`Search “${search.trim()}”`);
@@ -380,6 +387,10 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
         // Delivery status
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
+        // Driver (filtered list comes from lookups.dispatchers)
+        driverFilter={driverFilter}
+        onDriverFilterChange={setDriverFilter}
+        driverOptions={lookups.dispatchers.map((d) => ({ value: String(d.id), label: d.name }))}
         // Door tags (presence)
         doorTagFilter={doorTagFilter}
         onDoorTagFilterChange={setDoorTagFilter}
@@ -398,6 +409,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
           setPendingDocFilter("");
           setVerificationFilter("");
           setStatusFilter("");
+          setDriverFilter("");
           setDoorTagFilter("");
           setDatePreset("all");
           setDateFrom("");
@@ -659,7 +671,7 @@ const FilterSelect = Combobox;
 // Inactive filters live behind the "+ Filter" menu; once added, the pill
 // stays in place even after the user clears it (via X) only because the
 // user explicitly removed it — adding it back is one click away.
-type FilterDim = "auth" | "pendingDoc" | "verification" | "status" | "doorTag" | "date";
+type FilterDim = "auth" | "pendingDoc" | "verification" | "status" | "driver" | "doorTag" | "date";
 // Full field labels — these match the form's column names verbatim so the
 // filter bar reads like "the field you're filtering on", not a shorthand.
 // Date uses a dynamic label (the picked date column) — handled inline.
@@ -668,6 +680,7 @@ const FILTER_DIM_LABEL: Record<FilterDim, string> = {
   pendingDoc: "Pending Document Actions",
   verification: "Order Status",
   status: "Delivery Status",
+  driver: "Driver",
   doorTag: "Door Tags",
   date: "Date",
 };
@@ -678,6 +691,7 @@ function FilterBar({
   pendingDocFilter, onPendingDocFilterChange,
   verificationFilter, onVerificationFilterChange,
   statusFilter, onStatusFilterChange,
+  driverFilter, onDriverFilterChange, driverOptions,
   doorTagFilter, onDoorTagFilterChange,
   dateFieldFilter, onDateFieldFilterChange,
   datePreset, onDatePresetChange,
@@ -691,6 +705,8 @@ function FilterBar({
   pendingDocFilter: string; onPendingDocFilterChange: (v: string) => void;
   verificationFilter: string; onVerificationFilterChange: (v: string) => void;
   statusFilter: string; onStatusFilterChange: (v: string) => void;
+  driverFilter: string; onDriverFilterChange: (v: string) => void;
+  driverOptions: Array<{ value: string; label: string }>;
   doorTagFilter: "" | "yes" | "no"; onDoorTagFilterChange: (v: "" | "yes" | "no") => void;
   dateFieldFilter: DateField; onDateFieldFilterChange: (v: DateField) => void;
   datePreset: DatePreset; onDatePresetChange: (v: DatePreset) => void;
@@ -709,6 +725,7 @@ function FilterBar({
     if (pendingDocFilter) init.add("pendingDoc");
     if (verificationFilter) init.add("verification");
     if (statusFilter) init.add("status");
+    if (driverFilter) init.add("driver");
     if (doorTagFilter) init.add("doorTag");
     if (datePreset !== "all") init.add("date");
     return init;
@@ -738,6 +755,7 @@ function FilterBar({
     else if (dim === "pendingDoc") onPendingDocFilterChange("");
     else if (dim === "verification") onVerificationFilterChange("");
     else if (dim === "status") onStatusFilterChange("");
+    else if (dim === "driver") onDriverFilterChange("");
     else if (dim === "doorTag") onDoorTagFilterChange("");
     else if (dim === "date") {
       onDatePresetChange("all");
@@ -808,6 +826,23 @@ function FilterBar({
               value: k,
               label: STATUS_LABELS[k],
             })))}
+          />
+        </FilterChip>
+      )}
+      {expanded.has("driver") && (
+        // Driver filter — matches orders where any item is assigned to the
+        // selected driver. List comes from the Lookups payload so it stays
+        // in sync with whoever is currently in the dispatchers role pool.
+        <FilterChip
+          label={FILTER_DIM_LABEL.driver}
+          onRemove={() => removeDim("driver")}
+        >
+          <FilterSelect
+            value={driverFilter}
+            onChange={onDriverFilterChange}
+            placeholder="Pick driver"
+            options={sortByLabel(driverOptions)}
+            width={220}
           />
         </FilterChip>
       )}
@@ -1030,6 +1065,7 @@ function filterOrders(
   fields: {
     authFilter: string; pendingDocFilter: string;
     verificationFilter: string; statusFilter: string;
+    driverFilter: string;
     doorTagFilter: "" | "yes" | "no";
     dateRange: { from: string; to: string } | null;
     dateField: DateField;
@@ -1051,6 +1087,10 @@ function filterOrders(
   }
   if (fields.statusFilter) {
     list = list.filter((o) => o.status === fields.statusFilter);
+  }
+  if (fields.driverFilter) {
+    const driverId = Number(fields.driverFilter);
+    list = list.filter((o) => o.items.some((it) => it.driverId === driverId));
   }
   if (fields.doorTagFilter === "yes") {
     list = list.filter((o) => o.items.some((it) => (it.doorTagCount ?? 0) > 0));
