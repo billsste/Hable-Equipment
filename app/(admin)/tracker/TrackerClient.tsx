@@ -182,6 +182,19 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
   const hasFieldFilter =
     authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || driverFilter !== "" || csrFilter !== "" || doorTagFilter !== "" || datePreset !== "all";
 
+  // Tab counts — run the filter pipeline ignoring statusFilter so each tab
+  // shows "what you'd see if you clicked it given the other active filters".
+  // Recomputed when any non-status filter changes; cheap enough to inline.
+  const statusTabCounts = useMemo(() => {
+    const base = filterOrders(
+      orders, search,
+      { authFilter, pendingDocFilter, verificationFilter, statusFilter: "", driverFilter, csrFilter, doorTagFilter, dateRange, dateField: dateFieldFilter },
+    );
+    const counts: Record<string, number> = { all: base.length };
+    for (const o of base) counts[o.status] = (counts[o.status] ?? 0) + 1;
+    return counts;
+  }, [orders, search, authFilter, pendingDocFilter, verificationFilter, driverFilter, csrFilter, doorTagFilter, dateRange, dateFieldFilter]);
+
   function toggleSort(key: SortKey) {
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
   }
@@ -293,6 +306,18 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
           </button>
         </div>
       </div>
+
+      {/* Delivery Status quick-tabs — one tab per picker value plus All.
+          The tabs and the "Delivery Status" filter chip drive the SAME
+          state (statusFilter), so they stay in sync: picking a value via
+          the chip lights the matching tab, clicking a tab updates the
+          chip's selection. Counts reflect the other active filters so the
+          numbers are honest. */}
+      <StatusTabs
+        value={statusFilter}
+        onChange={setStatusFilter}
+        counts={statusTabCounts}
+      />
 
       {/* Search + filters — chip-based UI so the default state is just the
           search box + a single "+ Filter" button. Active filters render as
@@ -596,6 +621,76 @@ function Card({ order, onClick }: { order: OrderShape; mounted: boolean; onClick
 // TrackerClient used to ship a local FilterSelect that was the prototype for
 // components/combobox.tsx. The shared Combobox is now the single source.
 const FilterSelect = Combobox;
+
+// Delivery Status tab strip — one tab per DELIVERY_STATUS_PICKER_VALUES
+// entry plus "All". Tabs read & write the same `statusFilter` state as the
+// chip filter, so they stay in lockstep. Counts come in already-filtered
+// (everything except statusFilter) so the user can tell at a glance how the
+// in-flight set splits across delivery states.
+function StatusTabs({
+  value,
+  onChange,
+  counts,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  counts: Record<string, number>;
+}) {
+  // Tab definition. Order: All first (default), then picker values in
+  // order of typical lifecycle (TBD → Scheduled → Out for Delivery →
+  // Held / On Hold → Delivered → Cancelled). Matches the picker order in
+  // DELIVERY_STATUS_PICKER_VALUES.
+  const tabs: Array<{ key: string; label: string }> = [
+    { key: "", label: "All" },
+    ...DELIVERY_STATUS_PICKER_VALUES.map((s) => ({ key: s, label: STATUS_LABELS[s] })),
+  ];
+  return (
+    <div className="no-print" style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10, borderBottom: "1px solid #e5edf5" }}>
+      {tabs.map((t) => {
+        const active = value === t.key;
+        const count = counts[t.key === "" ? "all" : t.key] ?? 0;
+        return (
+          <button
+            key={t.key || "all"}
+            type="button"
+            onClick={() => onChange(t.key)}
+            style={{
+              padding: "8px 12px",
+              fontSize: 13,
+              color: active ? "#533afd" : "#64748d",
+              background: "transparent",
+              border: 0,
+              borderBottom: active ? "2px solid #533afd" : "2px solid transparent",
+              cursor: "pointer",
+              fontWeight: active ? 500 : 400,
+              marginBottom: -1,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+            onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = "#273951"; }}
+            onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = "#64748d"; }}
+          >
+            {t.label}
+            <span
+              style={{
+                fontSize: 11,
+                color: active ? "#533afd" : "#94a3b8",
+                background: active ? "rgba(83,58,253,0.10)" : "#f1f5f9",
+                padding: "1px 6px",
+                borderRadius: 10,
+                fontFeatureSettings: '"tnum"',
+                fontWeight: 500,
+              }}
+            >
+              {count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // Chip-based filter bar. Default state is just the search input + a single
 // "+ Filter" button — no row of always-on dropdowns. Each active filter
