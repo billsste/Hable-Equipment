@@ -419,14 +419,19 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
             {/* Order Type is its own column (Brent 2026-06 request) — the pill
                 used to ride under the Order # but reads cleaner alongside the
                 other categorical fields. */}
+            {/* Column widths tuned so the uppercase+tracking date headers
+                ("ORDERED", "SCHEDULED", "DISCHARGE") each have room for
+                the sort arrow without bleeding into the next column.
+                Ordered renders "Jun 4, 2026" so gets a wider 130px;
+                Scheduled / Discharge render "Jun 4" and share 105px. */}
             <colgroup>
               <col style={{ width: 130 }} />
               <col style={{ width: 120 }} />
-              <col style={{ width: "18%" }} />
-              <col style={{ width: "18%" }} />
-              <col style={{ width: 120 }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "20%" }} />
               <col style={{ width: 130 }} />
-              <col style={{ width: 130 }} />
+              <col style={{ width: 105 }} />
+              <col style={{ width: 105 }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: "12%" }} />
             </colgroup>
@@ -436,9 +441,9 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
                 <Th sortKey="orderType" sort={sort} onSort={toggleSort}>Order Type</Th>
                 <Th sortKey="patient" sort={sort} onSort={toggleSort}>Patient</Th>
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
-                <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
-                <Th sortKey="scheduled" sort={sort} onSort={toggleSort}>Scheduled Delivery</Th>
-                <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Discharge Date</Th>
+                <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Ordered</Th>
+                <Th sortKey="scheduled" sort={sort} onSort={toggleSort}>Scheduled</Th>
+                <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Discharge</Th>
                 <Th sortKey="csr" sort={sort} onSort={toggleSort}>CSR</Th>
                 <Th sortKey="driver" sort={sort} onSort={toggleSort}>Driver</Th>
               </tr>
