@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { OrderShape } from "@/lib/order-types";
 import { formatDateShort } from "@/lib/utils";
+import { Combobox } from "@/components/combobox";
 export { Label } from "@/components/form-primitives";
 import { Label } from "@/components/form-primitives";
 
@@ -369,17 +370,19 @@ export function HistoryReadonly({ order }: { order: OrderShape }) {
     [order.history],
   );
 
-  // Distinct action types present in this order's history — drives the
-  // quick-filter chip row. Each chip also carries a count so the user can
-  // see at a glance "this order has 5 door tags" before clicking.
-  const actionCounts = useMemo(() => {
+  // Distinct action types in this order's history — feeds the single
+  // catch-all filter dropdown. Each option carries its count so the
+  // dropdown reads "Door tag (5)" / "Status changed (3)" etc.
+  const actionOptions = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of allEvents) m.set(e.action, (m.get(e.action) ?? 0) + 1);
-    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return Array.from(m.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([action, count]) => ({ value: action, label: `${action} (${count})` }));
   }, [allEvents]);
 
-  // Active filter: "" = show everything; otherwise filter to the single
-  // selected action. Single-select keeps the UX a one-click toggle.
+  // "" = show everything. Combobox is the catch-all — same shared picker
+  // used by the Tracker filter row, so the UX is consistent.
   const [actionFilter, setActionFilter] = useState<string>("");
   const events = useMemo(
     () => (actionFilter ? allEvents.filter((e) => e.action === actionFilter) : allEvents),
@@ -404,25 +407,20 @@ export function HistoryReadonly({ order }: { order: OrderShape }) {
 
   return (
     <div className="space-y-2">
-      {/* Quick filter chips — distinct event types in this order. Single
-          click toggles the filter; clicking the active chip clears it. */}
-      {actionCounts.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <HistoryFilterChip
-            label="All"
-            count={allEvents.length}
-            active={actionFilter === ""}
-            onClick={() => setActionFilter("")}
+      {/* Catch-all filter — only renders when ≥2 distinct actions exist.
+          Type-ahead Combobox so the user can scan or search the list. */}
+      {actionOptions.length > 1 && (
+        <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+          <Combobox
+            value={actionFilter}
+            onChange={setActionFilter}
+            placeholder={`All events (${allEvents.length})`}
+            options={actionOptions}
+            width={260}
           />
-          {actionCounts.map(([action, count]) => (
-            <HistoryFilterChip
-              key={action}
-              label={action}
-              count={count}
-              active={actionFilter === action}
-              onClick={() => setActionFilter((cur) => (cur === action ? "" : action))}
-            />
-          ))}
+          <span style={{ fontSize: 11, color: "#94a3b8", fontFeatureSettings: '"tnum"' }}>
+            {events.length === allEvents.length ? `${allEvents.length} total` : `${events.length} of ${allEvents.length}`}
+          </span>
         </div>
       )}
 
@@ -474,47 +472,6 @@ export function HistoryReadonly({ order }: { order: OrderShape }) {
         )}
       </div>
     </div>
-  );
-}
-
-// Inline chip used by HistoryReadonly's quick-filter row. Active state is
-// the indigo brand color; inactive sits as a subtle outline so the chip
-// reads as a toggle, not a status badge.
-function HistoryFilterChip({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        padding: "3px 8px",
-        fontSize: 11,
-        fontWeight: 500,
-        cursor: "pointer",
-        color: active ? "#4434d4" : "#64748d",
-        background: active ? "rgba(83,58,253,0.10)" : "#ffffff",
-        border: `1px solid ${active ? "rgba(83,58,253,0.30)" : "#e5edf5"}`,
-        borderRadius: 4,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span>{label}</span>
-      <span style={{ fontSize: 10, color: active ? "#4434d4" : "#94a3b8", fontFeatureSettings: '"tnum"' }}>
-        {count}
-      </span>
-    </button>
   );
 }
 
