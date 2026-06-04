@@ -436,17 +436,44 @@ function Card({ title, right, children }: { title: string; right?: React.ReactNo
   );
 }
 
+// Profile rows use a fixed-width label column so labels stack on the left
+// and values stack on a single left-aligned column. Right-aligning values
+// (the previous layout) made each row's value start at a different x
+// because labels are different widths — read as "off". A 3-column grid
+// (label / value / action-slot) anchors everything to consistent rails.
+const ROW_GRID = "120px minmax(0, 1fr) auto";
+const ROW_STYLE: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: ROW_GRID,
+  alignItems: "center",
+  gap: 16,
+  padding: "10px 0",
+  borderBottom: "1px solid #f6f9fc",
+  fontSize: 13,
+};
+const ROW_LABEL_STYLE: React.CSSProperties = { color: "#64748d" };
+const ROW_VALUE_STYLE: React.CSSProperties = {
+  color: "#273951",
+  fontWeight: 500,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f6f9fc", fontSize: 13 }}>
-      <span style={{ color: "#64748d" }}>{label}</span>
-      <span style={{ color: "#273951", fontWeight: 500 }}>{value}</span>
+    <div style={ROW_STYLE}>
+      <span style={ROW_LABEL_STYLE}>{label}</span>
+      <span style={ROW_VALUE_STYLE}>{value}</span>
+      <span />
     </div>
   );
 }
 
-// Same shape as Row, but with a hover-revealed Edit pencil and an optional
-// "Updated" ping that fades after the parent's timeout.
+// Same column rails as Row, with an always-visible Edit button in the
+// action slot. Hover-only edit was too subtle — users (and touch devices)
+// never discovered it; surfacing it on every render makes the affordance
+// obvious without crowding the row.
 function EditableRow({
   label,
   value,
@@ -459,36 +486,38 @@ function EditableRow({
   onEdit: () => void;
 }) {
   return (
-    <div className="group" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f6f9fc", fontSize: 13, gap: 12 }}>
-      <span style={{ color: "#64748d" }}>{label}</span>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#273951", fontWeight: 500, minWidth: 0 }}>
+    <div style={ROW_STYLE}>
+      <span style={ROW_LABEL_STYLE}>{label}</span>
+      <span style={{ ...ROW_VALUE_STYLE, display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
         {savedPing && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#108c3d", fontSize: 11 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#108c3d", fontSize: 11, fontWeight: 400 }}>
             <Check size={12} /> Updated
           </span>
         )}
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
-        <button
-          type="button"
-          onClick={onEdit}
-          title={`Edit ${label}`}
-          className="opacity-0 group-hover:opacity-100"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "3px 8px",
-            fontSize: 11,
-            color: "#533afd",
-            background: "rgba(83,58,253,0.06)",
-            border: "1px solid rgba(83,58,253,0.18)",
-            borderRadius: 4,
-            transition: "opacity 120ms",
-          }}
-        >
-          <Pencil size={11} /> Edit
-        </button>
       </span>
+      <button
+        type="button"
+        onClick={onEdit}
+        title={`Edit ${label}`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 10px",
+          fontSize: 12,
+          color: "#533afd",
+          background: "rgba(83,58,253,0.06)",
+          border: "1px solid rgba(83,58,253,0.18)",
+          borderRadius: 4,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(83,58,253,0.12)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(83,58,253,0.06)"; }}
+      >
+        <Pencil size={11} /> Edit
+      </button>
     </div>
   );
 }
