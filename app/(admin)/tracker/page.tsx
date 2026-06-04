@@ -15,7 +15,6 @@ export default async function TrackerPage({
   searchParams: SearchParamsPromise;
 }) {
   const sp = await searchParams;
-  const rawView = Array.isArray(sp.view) ? sp.view[0] : sp.view;
   const rawNew = Array.isArray(sp.new) ? sp.new[0] : sp.new;
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
@@ -89,7 +88,6 @@ export default async function TrackerPage({
     <TrackerClient
       currentUser={{ id: me.id, name: me.name, roles: me.roles }}
       initialOrders={orders.map(toOrderShape)}
-      initialView={rawView ?? null}
       initialNew={rawNew === "1"}
       lookups={{
         csrs,

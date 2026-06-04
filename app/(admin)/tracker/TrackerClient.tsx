@@ -55,26 +55,15 @@ export type Lookups = {
 type Props = {
   currentUser: { id: number; name: string; roles: string[] };
   initialOrders: OrderShape[];
-  initialView: string | null;
   initialNew: boolean;
   lookups: Lookups;
 };
 
-type ViewKey = "all" | "open" | "out" | "delivered";
+// Per Brent 2026-06: the view-tab strip (Open / Out for Delivery / Delivered
+// / All) is gone — the chip-based filter bar handles every scope the tabs
+// covered (Delivery Status → Out for Delivery / Delivered, plus the rest).
 type SortKey = "orderNumber" | "orderType" | "patient" | "facility" | "csr" | "driver" | "orderDate";
 type SortDir = "asc" | "desc";
-
-// Tabs key off Delivery Status — the only manual lifecycle field. Anything
-// finer-grained (Auth, Pending Docs, Order Status) is reachable via the
-// dropdown filters below.
-const VIEWS: { key: ViewKey; label: string; description: string }[] = [
-  { key: "open",      label: "Open",             description: "Anything not yet wrapped up" },
-  { key: "out",       label: "Out for Delivery", description: "Driver en route" },
-  { key: "delivered", label: "Delivered",        description: "Closed loop" },
-  { key: "all",       label: "All",              description: "Every order" },
-];
-
-const VALID_VIEWS = new Set<ViewKey>(["all", "open", "out", "delivered"]);
 
 // Order Date presets shown next to the date inputs. The "no filter" state is
 // represented by `datePreset === "all"` (the value FilterSelect uses for its
@@ -136,12 +125,8 @@ function toIsoDay(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
-export default function TrackerClient({ currentUser, initialOrders, initialView, initialNew, lookups }: Props) {
-  const startView: ViewKey =
-    initialView && VALID_VIEWS.has(initialView as ViewKey) ? (initialView as ViewKey) : "open";
-
+export default function TrackerClient({ currentUser, initialOrders, initialNew, lookups }: Props) {
   const [orders, setOrders] = useState<OrderShape[]>(initialOrders);
-  const [view, setView] = useState<ViewKey>(startView);
   const [search, setSearch] = useState("");
   // Brent 2026-06: filter set trimmed to the four Brent asked for —
   // Authorization Status, Pending Document Actions, Order Status (verification),
@@ -184,27 +169,15 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
     () =>
       sortOrders(
         filterOrders(
-          orders, view, search,
+          orders, search,
           { authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, doorTagFilter, dateRange, dateField: dateFieldFilter },
         ),
         sort,
       ),
-    [orders, view, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, doorTagFilter, dateRange, dateFieldFilter, sort],
+    [orders, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, doorTagFilter, dateRange, dateFieldFilter, sort],
   );
   const hasFieldFilter =
     authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || driverFilter !== "" || doorTagFilter !== "" || datePreset !== "all";
-  const counts = useMemo(() => {
-    const m: Record<ViewKey, number> = {
-      all: orders.length,
-      open: 0, out: 0, delivered: 0,
-    };
-    for (const o of orders) {
-      if (!isTerminalStatus(o.status)) m.open++;
-      if (o.status === "OUT_FOR_DELIVERY") m.out++;
-      if (o.status === "DELIVERED") m.delivered++;
-    }
-    return m;
-  }, [orders]);
 
   function toggleSort(key: SortKey) {
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -246,7 +219,6 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
               push, not another conditional fragment slipped in by hand. */}
           {(() => {
             const chips: string[] = [
-              `View: ${VIEWS.find((v) => v.key === view)?.label ?? view}`,
               `${filtered.length} record${filtered.length === 1 ? "" : "s"}`,
             ];
             if (dateRange) chips.push(`${labelForDateField(dateFieldFilter)} ${dateRange.from} → ${dateRange.to}`);
@@ -313,58 +285,6 @@ export default function TrackerClient({ currentUser, initialOrders, initialView,
             <Plus size={14} /> New order
           </button>
         </div>
-      </div>
-
-      {/* View tabs */}
-      <div className="flex flex-wrap gap-1 no-print" style={{ marginBottom: 12 }}>
-        {VIEWS.map((v) => {
-          const active = view === v.key;
-          const count = counts[v.key];
-          return (
-            <button
-              key={v.key}
-              onClick={() => setView(v.key)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "6px 12px",
-                fontSize: 13,
-                fontWeight: 500,
-                borderRadius: 4,
-                transition: "background-color 100ms, color 100ms",
-                ...(active
-                  ? { background: "rgba(83,58,253,0.08)", color: "#4434d4", border: "1px solid rgba(83,58,253,0.20)" }
-                  : { background: "transparent", color: "#64748d", border: "1px solid transparent" }),
-              }}
-              title={v.description}
-              onMouseEnter={(e) => {
-                if (!active) {
-                  (e.currentTarget as HTMLButtonElement).style.background = "#f6f9fc";
-                  (e.currentTarget as HTMLButtonElement).style.color = "#273951";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                  (e.currentTarget as HTMLButtonElement).style.color = "#64748d";
-                }
-              }}
-            >
-              <span>{v.label}</span>
-              <span
-                style={{
-                  marginLeft: 8,
-                  color: active ? "#4434d4" : "#94a3b8",
-                  fontWeight: 500,
-                  fontFeatureSettings: '"tnum"',
-                  opacity: active ? 1 : 0.8,
-                }}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
       </div>
 
       {/* Search + filters — chip-based UI so the default state is just the
@@ -1060,7 +980,6 @@ function FilterChip({
 
 function filterOrders(
   orders: OrderShape[],
-  view: ViewKey,
   search: string,
   fields: {
     authFilter: string; pendingDocFilter: string;
@@ -1072,9 +991,6 @@ function filterOrders(
   },
 ) {
   let list = orders;
-  if (view === "open") list = list.filter((o) => !isTerminalStatus(o.status));
-  else if (view === "out") list = list.filter((o) => o.status === "OUT_FOR_DELIVERY");
-  else if (view === "delivered") list = list.filter((o) => o.status === "DELIVERED");
 
   if (fields.authFilter) {
     list = list.filter((o) => o.authStatus === fields.authFilter);
