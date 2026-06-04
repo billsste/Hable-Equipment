@@ -428,7 +428,7 @@ export async function PATCH(
   }
 
   let itemsChanged = false;
-  let newItemRows: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: Date | null; completedAt: Date | null; doorTagCount: number }> = [];
+  let newItemRows: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: Date | null; completedAt: Date | null; deliveryStatus: OutcomeStatus; doorTagCount: number }> = [];
   if ("items" in body && Array.isArray(body.items)) {
     newItemRows = (body.items as Array<{
       equipmentId?: unknown;
@@ -436,6 +436,7 @@ export async function PATCH(
       driverId?: unknown;
       scheduledDeliveryDate?: unknown;
       completedAt?: unknown;
+      deliveryStatus?: unknown;
       doorTagCount?: unknown;
     }>)
       .filter((it) => typeof it.equipmentId === "string" && (it.equipmentId as string).length > 0)
@@ -449,6 +450,9 @@ export async function PATCH(
         completedAt: typeof it.completedAt === "string" && it.completedAt
           ? new Date(it.completedAt + "T00:00:00.000Z")
           : null,
+        deliveryStatus: VALID_OUTCOME_STATUSES.includes(it.deliveryStatus as OutcomeStatus)
+          ? (it.deliveryStatus as OutcomeStatus)
+          : ("ACTIVE" as OutcomeStatus),
         doorTagCount: typeof it.doorTagCount === "number" && it.doorTagCount >= 0
           ? Math.floor(it.doorTagCount)
           : 0,
@@ -539,6 +543,7 @@ export async function PATCH(
             driverId: it.driverId,
             scheduledDeliveryDate: it.scheduledDeliveryDate,
             completedAt: it.completedAt,
+            deliveryStatus: it.deliveryStatus,
             doorTagCount: it.doorTagCount,
           })),
         }),
@@ -597,6 +602,7 @@ async function perItemEventDescriptions(
     driver: { id: number; name: string } | null;
     scheduledDeliveryDate: Date | null;
     completedAt: Date | null;
+    deliveryStatus: OutcomeStatus;
     doorTagCount: number;
     equipment: { abbreviation: string; name: string };
   }>,
@@ -605,6 +611,7 @@ async function perItemEventDescriptions(
     driverId: number | null;
     scheduledDeliveryDate: Date | null;
     completedAt: Date | null;
+    deliveryStatus: OutcomeStatus;
     doorTagCount: number;
   }>,
   who: string,
@@ -675,6 +682,15 @@ async function perItemEventDescriptions(
         detail: nextCompleted
           ? `${label}: ${nextCompleted}${prevCompleted ? ` (was ${prevCompleted})` : ""}`
           : `${label}: ${prevCompleted ?? "—"} cleared`,
+      });
+    }
+
+    // Per-item Equipment Delivery Status change
+    if (prev.deliveryStatus !== it.deliveryStatus) {
+      events.push({
+        who,
+        action: ORDER_FIELD_LABELS.itemDeliveryStatus + " changed",
+        detail: `${label}: ${STATUS_LABELS[prev.deliveryStatus]} → ${STATUS_LABELS[it.deliveryStatus]}`,
       });
     }
 

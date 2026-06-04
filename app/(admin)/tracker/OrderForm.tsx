@@ -100,13 +100,14 @@ export default function OrderForm(props: Props) {
   // Items now carry per-row driver + completedAt (replaces the order-level
   // dispatcherId + deliveredAt fields). Drivers are independent per line so
   // one order can split across multiple drivers and dates.
-  const [items, setItems] = useState<Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: string; completedAt: string; doorTagCount: number }>>(
+  const [items, setItems] = useState<Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>>(
     initial?.items.map((it) => ({
       equipmentId: it.equipmentId,
       quantity: it.quantity,
       driverId: it.driverId ?? null,
       scheduledDeliveryDate: it.scheduledDeliveryDate?.slice(0, 10) ?? "",
       completedAt: it.completedAt?.slice(0, 10) ?? "",
+      deliveryStatus: it.deliveryStatus ?? "ACTIVE",
       doorTagCount: it.doorTagCount ?? 0,
     })) ?? [],
   );
@@ -223,14 +224,15 @@ export default function OrderForm(props: Props) {
           fulfillmentCompanies: companies,
           status,
           cancellationReason: statusReason || null,
-          // Per-item driver + scheduled / completed dates replace the old
-          // order-level dispatcherId + deliveredAt fields.
+          // Per-item driver + scheduled / completed dates + per-item
+          // delivery status replace the old order-level fields.
           items: items.map((it) => ({
             equipmentId: it.equipmentId,
             quantity: it.quantity,
             driverId: it.driverId,
             scheduledDeliveryDate: it.scheduledDeliveryDate || null,
             completedAt: it.completedAt || null,
+            deliveryStatus: it.deliveryStatus,
             doorTagCount: it.doorTagCount,
           })),
           noteToAdd: noteDraft.trim() || null,
@@ -280,14 +282,15 @@ export default function OrderForm(props: Props) {
           fulfillmentCompanies: companies,
           dischargeDate: dischargeDate || null,
           requestedDeliveryDate: requestedDeliveryDate || null,
-          // Per-item driver + scheduled + completed dates (no more
-          // order-level dispatcherId / deliveredAt).
+          // Per-item driver + scheduled + completed dates + per-item
+          // delivery status. No more order-level dispatcherId / deliveredAt.
           items: items.map((it) => ({
             equipmentId: it.equipmentId,
             quantity: it.quantity,
             driverId: it.driverId,
             scheduledDeliveryDate: it.scheduledDeliveryDate || null,
             completedAt: it.completedAt || null,
+            deliveryStatus: it.deliveryStatus,
             doorTagCount: it.doorTagCount,
           })),
           noteToAdd: noteDraft.trim() || null,
@@ -631,7 +634,7 @@ export default function OrderForm(props: Props) {
                     equipment={lookups.equipment}
                     value={items}
                     onChange={setItems}
-                    defaults={{ driverId: null, scheduledDeliveryDate: "", completedAt: "", doorTagCount: 0 }}
+                    defaults={{ driverId: null, scheduledDeliveryDate: "", completedAt: "", deliveryStatus: "ACTIVE" as OutcomeStatus, doorTagCount: 0 }}
                   />
                 </div>
               </div>
@@ -1174,17 +1177,28 @@ function PerItemDrivers({
   driverLookup,
   onChange,
 }: {
-  items: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: string; completedAt: string; doorTagCount: number }>;
+  items: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>;
   equipmentLookup: Lookups["equipment"];
   driverLookup: Lookups["dispatchers"];
-  onChange: (items: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: string; completedAt: string; doorTagCount: number }>) => void;
+  onChange: (items: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>) => void;
 }) {
-  function patch(idx: number, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string; completedAt: string; doorTagCount: number }>) {
+  function patch(idx: number, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>) {
     onChange(items.map((it, i) => (i === idx ? { ...it, ...p } : it)));
   }
-  // Grid: Equipment | Driver | Scheduled | Completed | Door Tags. Used by
-  // header + each row so column boundaries always line up.
-  const gridCols = "minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 110px";
+  // Grid: Equipment | Status | Driver | Scheduled | Completed | Door Tags.
+  // Status sits second so a CSR scanning a row reads "this piece of
+  // equipment is in state X, owned by driver Y, scheduled for Z, completed
+  // on W" left-to-right. Used by header + each row so column boundaries
+  // always line up.
+  const gridCols = "minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 110px";
+  // Always include the row's current status in the picker — handles legacy
+  // values (HELD_FOR_AUTH, DOOR_TAG, etc.) that were dropped from the
+  // picker list but still exist on rows in the DB.
+  function pickerValuesFor(current: OutcomeStatus): OutcomeStatus[] {
+    return DELIVERY_STATUS_PICKER_VALUES.includes(current)
+      ? [...DELIVERY_STATUS_PICKER_VALUES]
+      : [current, ...DELIVERY_STATUS_PICKER_VALUES];
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div
@@ -1201,6 +1215,7 @@ function PerItemDrivers({
         }}
       >
         <span>Equipment</span>
+        <span>Equipment Delivery Status</span>
         <span>Driver</span>
         <span>Scheduled Delivery Date</span>
         <span>Completed Date</span>
@@ -1233,6 +1248,23 @@ function PerItemDrivers({
                 </div>
               )}
             </div>
+            <select
+              value={it.deliveryStatus}
+              onChange={(e) => patch(idx, { deliveryStatus: e.target.value as OutcomeStatus })}
+              style={{
+                padding: "6px 8px",
+                fontSize: 13,
+                color: "#273951",
+                background: "#fff",
+                border: "1px solid #e5edf5",
+                borderRadius: 4,
+              }}
+              aria-label="Equipment delivery status"
+            >
+              {pickerValuesFor(it.deliveryStatus).map((s) => (
+                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+              ))}
+            </select>
             <select
               value={it.driverId ?? ""}
               onChange={(e) => patch(idx, { driverId: e.target.value ? Number(e.target.value) : null })}

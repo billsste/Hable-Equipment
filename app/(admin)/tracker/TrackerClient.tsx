@@ -60,7 +60,7 @@ type Props = {
 // Per Brent 2026-06: the view-tab strip (Open / Out for Delivery / Delivered
 // / All) is gone — the chip-based filter bar handles every scope the tabs
 // covered (Delivery Status → Out for Delivery / Delivered, plus the rest).
-type SortKey = "orderNumber" | "orderType" | "patient" | "facility" | "csr" | "driver" | "orderDate" | "discharge";
+type SortKey = "orderNumber" | "orderType" | "patient" | "facility" | "csr" | "driver" | "orderDate" | "discharge" | "scheduled";
 type SortDir = "asc" | "desc";
 
 // Order Date presets shown next to the date inputs. The "no filter" state is
@@ -264,7 +264,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
               chips.push(`Pending Doc ${docLabel}`);
             }
             if (verificationFilter) chips.push(`Order Status ${VERIFICATION_STATUS_LABELS[verificationFilter as keyof typeof VERIFICATION_STATUS_LABELS]}`);
-            if (statusFilter) chips.push(`Delivery ${STATUS_LABELS[statusFilter as OutcomeStatus]}`);
+            if (statusFilter) chips.push(`Full Order Delivery ${STATUS_LABELS[statusFilter as OutcomeStatus]}`);
             if (driverFilter) {
               const dn = lookups.dispatchers.find((d) => String(d.id) === driverFilter)?.name ?? driverFilter;
               chips.push(`Driver ${dn}`);
@@ -421,13 +421,14 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
                 other categorical fields. */}
             <colgroup>
               <col style={{ width: 130 }} />
-              <col style={{ width: 130 }} />
-              <col style={{ width: "20%" }} />
-              <col style={{ width: "20%" }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "18%" }} />
               <col style={{ width: 120 }} />
               <col style={{ width: 130 }} />
-              <col style={{ width: "13%" }} />
-              <col style={{ width: "13%" }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
             </colgroup>
             <thead>
               <tr style={{ background: "#f6f9fc", borderBottom: "1px solid #e5edf5" }}>
@@ -436,6 +437,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
                 <Th sortKey="patient" sort={sort} onSort={toggleSort}>Patient</Th>
                 <Th sortKey="facility" sort={sort} onSort={toggleSort}>Facility</Th>
                 <Th sortKey="orderDate" sort={sort} onSort={toggleSort}>Order Date</Th>
+                <Th sortKey="scheduled" sort={sort} onSort={toggleSort}>Scheduled Delivery</Th>
                 <Th sortKey="discharge" sort={sort} onSort={toggleSort}>Discharge Date</Th>
                 <Th sortKey="csr" sort={sort} onSort={toggleSort}>CSR</Th>
                 <Th sortKey="driver" sort={sort} onSort={toggleSort}>Driver</Th>
@@ -444,7 +446,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
+                  <td colSpan={9} style={{ padding: 32, textAlign: "center", color: "#64748d", fontSize: 13 }}>
                     No orders in this view.
                   </td>
                 </tr>
@@ -495,8 +497,9 @@ function Row({ order, onClick }: { order: OrderShape; mounted: boolean; onClick:
       onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
     >
       {/* Cell order mirrors the <colgroup>/<thead> contract above:
-          Order # → Order Type → Patient → Facility → Order Date → Discharge
-          Date → CSR → Driver. Don't reorder one without the other two. */}
+          Order # → Order Type → Patient → Facility → Order Date →
+          Scheduled Delivery → Discharge Date → CSR → Driver. Don't
+          reorder one without the other two. */}
       <Td>
         <span
           style={{
@@ -552,6 +555,9 @@ function Row({ order, onClick }: { order: OrderShape; mounted: boolean; onClick:
         <span style={{ color: "#273951", fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
           {formatOrderDate(orderDateOf(order))}
         </span>
+      </Td>
+      <Td>
+        <ScheduledDeliveryCell order={order} />
       </Td>
       <Td>
         <DischargeDateCell iso={order.dischargeDate} />
@@ -661,13 +667,17 @@ function StatusTabs({
   onChange: (v: string) => void;
   counts: Record<string, number>;
 }) {
-  // Tab definition. Order: All first (default), then picker values in
-  // order of typical lifecycle (TBD → Scheduled → Out for Delivery →
-  // Held / On Hold → Delivered → Cancelled). Matches the picker order in
-  // DELIVERY_STATUS_PICKER_VALUES.
+  // Tab definition. Order: All first (default), then picker values minus
+  // SCHEDULED ("Scheduled for Delivery") — Steve 2026-06: scheduled is
+  // now an auto-derived state from item-level driver+date, so the quick
+  // toggle was redundant. The full chip picker still includes it for
+  // manual override. HELD_FOR_AUTH was already removed from
+  // DELIVERY_STATUS_PICKER_VALUES so it's naturally excluded here too.
   const tabs: Array<{ key: string; label: string }> = [
     { key: "", label: "All" },
-    ...DELIVERY_STATUS_PICKER_VALUES.map((s) => ({ key: s, label: STATUS_LABELS[s] })),
+    ...DELIVERY_STATUS_PICKER_VALUES
+      .filter((s) => s !== "SCHEDULED")
+      .map((s) => ({ key: s, label: STATUS_LABELS[s] })),
   ];
   return (
     <div className="no-print" style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10, borderBottom: "1px solid #e5edf5" }}>
@@ -731,7 +741,7 @@ const FILTER_DIM_LABEL: Record<FilterDim, string> = {
   auth: "Authorization Status",
   pendingDoc: "Pending Document Actions",
   verification: "Order Status",
-  status: "Delivery Status",
+  status: "Full Order Delivery Status",
   driver: "Driver",
   csr: "CSR",
   doorTag: "Door Tags",
@@ -1217,6 +1227,20 @@ function sortOrders(list: OrderShape[], sort: { key: SortKey; dir: SortDir }): O
       case "discharge":   return o.dischargeDate
         ? new Date(o.dischargeDate).getTime()
         : (sort.dir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+      // Scheduled Delivery is per-item — sort by the earliest scheduled
+      // date across items so a row with at least one imminent item
+      // floats near the top; orders with no scheduled items float to
+      // the bottom regardless of direction.
+      case "scheduled": {
+        const dates = o.items
+          .map((it) => it.scheduledDeliveryDate)
+          .filter((d): d is string => !!d)
+          .map((d) => new Date(d).getTime());
+        if (dates.length === 0) {
+          return sort.dir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        }
+        return Math.min(...dates);
+      }
       case "patient": return o.patientDisplay.toLowerCase();
       case "facility": return (o.facilityName ?? "").toLowerCase();
       case "orderType": return WORK_ORDER_TYPE_LABELS[o.workOrderType].toLowerCase();
@@ -1322,6 +1346,52 @@ function formatDc(iso: string | null): { dateLabel: string; urgency: DcUrgency }
   return { dateLabel, urgency };
 }
 
+// Scheduled Delivery column. Per-item field — collapse the order's items
+// into one of three display states matching DriversCell's vocabulary:
+//   - none     → no item has a scheduled date
+//   - single   → every scheduled item shares the same date (or only one)
+//   - multiple → ≥2 distinct scheduled dates across items
+// Renders the single date (formatted) or a "Multiple" chip with a tooltip
+// listing every distinct date. Missing renders muted "—".
+function ScheduledDeliveryCell({ order }: { order: OrderShape }) {
+  const dates = Array.from(
+    new Set(
+      order.items
+        .map((it) => it.scheduledDeliveryDate)
+        .filter((d): d is string => !!d)
+        .map((d) => d.slice(0, 10)), // UTC date slice, stable comparison
+    ),
+  ).sort();
+  if (dates.length === 0) {
+    return <Muted>—</Muted>;
+  }
+  if (dates.length === 1) {
+    // Render in UTC so SSR + client agree — same as DischargeDateCell.
+    const label = new Date(dates[0]).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+    return (
+      <span style={{ color: "#273951", fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span
+      title={`Scheduled: ${dates.join(", ")}`}
+      style={{
+        color: "#4434d4",
+        fontWeight: 500,
+        whiteSpace: "nowrap",
+      }}
+    >
+      Multiple ({dates.length})
+    </span>
+  );
+}
+
 // Discharge Date column. Tints the date by dcUrgency so a glance down the
 // column surfaces overdue/imminent DCs without forcing the user to read
 // every value. Missing DC renders muted to keep the column quiet.
@@ -1381,12 +1451,12 @@ function exportCsv(rows: OrderShape[]): void {
     "Deductible Status", "Coinsurance %", "Deductible Amount",
     // verification / auth
     "Authorization Status", "Pending Document Actions",
-    "Order Status", "Delivery Status", "Eldercare",
+    "Order Status", "Full Order Delivery Status", "Eldercare",
     // companies + notes
     "Fulfillment Companies", "Notes",
     // per-item slice — one row per item
     "Driver", "Item", "Quantity", "Category", "Abbreviation",
-    "HCPCS Code", "Scheduled Delivery Date", "Completed Date", "Door Tags",
+    "HCPCS Code", "Equipment Delivery Status", "Scheduled Delivery Date", "Completed Date", "Door Tags",
     // bookkeeping
     "Created At", "Updated At",
   ];
@@ -1441,9 +1511,10 @@ function exportCsv(rows: OrderShape[]): void {
     const trailingColumns: string[] = [fmtDate(o.createdAt), fmtDate(o.updatedAt)];
 
     if (o.items.length === 0) {
-      // 9 placeholders matches the per-item header span: Driver, Item,
-      // Quantity, Category, Abbreviation, HCPCS, Scheduled, Completed, Door Tags
-      data.push([...orderColumns, "", "", "", "", "", "", "", "", "", ...trailingColumns]);
+      // 10 placeholders matches the per-item header span: Driver, Item,
+      // Quantity, Category, Abbreviation, HCPCS, Equipment Delivery Status,
+      // Scheduled, Completed, Door Tags
+      data.push([...orderColumns, "", "", "", "", "", "", "", "", "", "", ...trailingColumns]);
       continue;
     }
     for (const it of o.items) {
@@ -1455,6 +1526,7 @@ function exportCsv(rows: OrderShape[]): void {
         it.category ?? "",
         it.abbreviation ?? "",
         it.hcpcsCode ?? "",
+        STATUS_LABELS[it.deliveryStatus],
         fmtDate(it.scheduledDeliveryDate),
         fmtDate(it.completedAt),
         String(it.doorTagCount ?? 0),

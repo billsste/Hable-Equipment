@@ -205,6 +205,7 @@ export function toOrderShape(o: OrderWithIncludes): OrderShape {
       driverName: it.driver?.name ?? null,
       scheduledDeliveryDate: it.scheduledDeliveryDate?.toISOString() ?? null,
       completedAt: it.completedAt?.toISOString() ?? null,
+      deliveryStatus: it.deliveryStatus ?? "ACTIVE",
       doorTagCount: it.doorTagCount ?? 0,
     })),
     history: buildHistory(o),

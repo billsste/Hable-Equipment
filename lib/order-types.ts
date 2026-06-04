@@ -63,6 +63,10 @@ export type OrderShape = {
     // auto-promotion ladder in deriveDeliveryStatus().
     scheduledDeliveryDate: string | null;
     completedAt: string | null;
+    // Per-item Equipment Delivery Status — same OutcomeStatus enum as
+    // the order-level "Full Order Delivery Status" so the picker can
+    // reuse without forking a parallel enum.
+    deliveryStatus: OutcomeStatus;
     // Per-item door-tag attempts. Increments when a driver leaves a tag for
     // this specific line; resets to 0 on Stage 1 equipment changes.
     doorTagCount: number;
@@ -330,7 +334,7 @@ export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
 // this picker is the manual outcome flag.
 export const STATUS_LABELS: Record<OutcomeStatus, string> = {
   ACTIVE: "TBD",
-  READY_TO_SCHEDULE: "Ready to Schedule",
+  READY_TO_SCHEDULE: "Ready to Deliver",
   SCHEDULED: "Scheduled for Delivery",
   ON_HOLD: "On Hold",
   HELD_FOR_AUTH: "Held for Authorization",
@@ -351,15 +355,15 @@ export const STATUS_LABELS: Record<OutcomeStatus, string> = {
 // it's outside this set so a user editing a legacy row doesn't see "blank".
 export const DELIVERY_STATUS_PICKER_VALUES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE",            // TBD
-  "READY_TO_SCHEDULE",
+  "READY_TO_SCHEDULE", // "Ready to Deliver"
   "SCHEDULED",         // "Scheduled for Delivery"
   "ON_HOLD",
-  "HELD_FOR_AUTH",
   "OUT_FOR_DELIVERY",
   // DOOR_TAG removed from the manual picker — door tags are now tracked
-  // per-item in Stage 3 (OrderItem.doorTagCount). Existing rows that already
-  // have status = DOOR_TAG still render via the "include current value"
-  // logic in the picker call sites.
+  // per-item in Stage 3 (OrderItem.doorTagCount). HELD_FOR_AUTH removed
+  // 2026-06 per Steve — the auth flow already surfaces that state, the
+  // duplication on Delivery Status was redundant. Both enum values stay
+  // valid for back-compat; the picker just doesn't expose them.
   "CANCELLED",
   "DELIVERED",
 ];
@@ -433,6 +437,7 @@ export const ORDER_FIELD_LABELS = {
   scheduledDeliveryDate: "Scheduled delivery date",
   dosSubmitted: "DOS submitted",
   workOrderType: "Work order type",
+  itemDeliveryStatus: "Equipment delivery status",
 } as const;
 
 export type OrderFieldKey = keyof typeof ORDER_FIELD_LABELS;

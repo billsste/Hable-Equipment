@@ -98,6 +98,7 @@ export async function POST(request: Request) {
         driverId?: unknown;
         scheduledDeliveryDate?: unknown;
         completedAt?: unknown;
+        deliveryStatus?: unknown;
         doorTagCount?: unknown;
       }>)
         .filter((it) => typeof it.equipmentId === "string" && (it.equipmentId as string).length > 0)
@@ -111,6 +112,9 @@ export async function POST(request: Request) {
           completedAt: typeof it.completedAt === "string" && it.completedAt
             ? new Date(it.completedAt + "T00:00:00.000Z")
             : null,
+          deliveryStatus: VALID_OUTCOME_STATUSES.includes(it.deliveryStatus as OutcomeStatus)
+            ? (it.deliveryStatus as OutcomeStatus)
+            : ("ACTIVE" as OutcomeStatus),
           doorTagCount: typeof it.doorTagCount === "number" && it.doorTagCount >= 0
             ? Math.floor(it.doorTagCount)
             : 0,
@@ -329,6 +333,7 @@ export async function POST(request: Request) {
                   driverId: it.driverId,
                   scheduledDeliveryDate: it.scheduledDeliveryDate,
                   completedAt: it.completedAt,
+                  deliveryStatus: it.deliveryStatus,
                   doorTagCount: it.doorTagCount,
                 })),
               },

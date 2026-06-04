@@ -380,6 +380,12 @@ model OrderItem {
   // scheduledDeliveryDate set ⇒ Order.status = SCHEDULED).
   scheduledDeliveryDate DateTime?
   completedAt DateTime?
+  // Per-item Equipment Delivery Status — independent of Order.status
+  // (renamed "Full Order Delivery Status" in the UI). Lets a CSR park
+  // one item (e.g. a backordered wheelchair) while the rest of the
+  // order keeps shipping. Same OutcomeStatus enum so the picker /
+  // colors / labels reuse without forking a parallel enum.
+  deliveryStatus OutcomeStatus @default(ACTIVE)
 
   // Per-item door-tag count. One delivery attempt that left a door tag for
   // this specific item increments the counter; multiple drivers / multiple
