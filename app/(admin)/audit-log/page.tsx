@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, Download, Loader2, Search, X } from "lucide-react";
 import { downloadCsv, formatDate } from "@/lib/utils";
+import { Combobox } from "@/components/combobox";
 
 type AuditEntry = {
   id: string;
@@ -132,24 +133,22 @@ export default function AuditLogPage() {
             style={{ border: "1px solid #e5edf5", borderRadius: 4, color: "#061b31" }}
           />
         </div>
-        <select
+        {/* Searchable comboboxes match the Tracker / form patterns; both
+            lists routinely exceed 5 options so the type-ahead is worth it. */}
+        <Combobox
           value={actionFilter}
-          onChange={(e) => setActionFilter(e.target.value)}
-          className="px-3 py-2 text-[13px] outline-none"
-          style={{ border: "1px solid #e5edf5", borderRadius: 4, color: "#061b31", background: "#ffffff" }}
-        >
-          <option value="">All actions</option>
-          {actionTypes.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <select
+          onChange={setActionFilter}
+          placeholder="All actions"
+          options={actionTypes.map((a) => ({ value: a, label: a }))}
+          width={220}
+        />
+        <Combobox
           value={userFilter}
-          onChange={(e) => setUserFilter(e.target.value)}
-          className="px-3 py-2 text-[13px] outline-none"
-          style={{ border: "1px solid #e5edf5", borderRadius: 4, color: "#061b31", background: "#ffffff" }}
-        >
-          <option value="">All users</option>
-          {userNames.map((u) => <option key={u} value={u}>{u}</option>)}
-        </select>
+          onChange={setUserFilter}
+          placeholder="All users"
+          options={userNames.map((u) => ({ value: u, label: u }))}
+          width={200}
+        />
       </div>
 
       <div
