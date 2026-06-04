@@ -363,10 +363,17 @@ const LIFECYCLE_ACTIONS = new Set<string>([
   "Ticket printed",
   "Dispatcher acknowledged",
   "Out for delivery",
+  "Door tag",
   "Delivered",
   "Cancelled",
   "Status changed",
   "Auth status changed",
+  // Per-item assignment events emitted by perItemEventDescriptions in the
+  // PATCH route — surface them on the History tab so the driver / completion
+  // / door-tag timeline is readable in one place.
+  "Driver assigned",
+  "Item completed",
+  "Item completion cleared",
 ]);
 
 export function HistoryReadonly({ order }: { order: OrderShape }) {
@@ -400,7 +407,7 @@ export function HistoryReadonly({ order }: { order: OrderShape }) {
       {events.map((e) => (
         <div
           key={e.id}
-          className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]"
+          className="flex items-start justify-between gap-3 px-3 py-2 text-[13px]"
           style={{
             background: "#f6f9fc",
             border: "1px solid #e5edf5",
@@ -408,7 +415,18 @@ export function HistoryReadonly({ order }: { order: OrderShape }) {
             borderRadius: 4,
           }}
         >
-          <span className="truncate">{e.action}</span>
+          <span className="flex flex-col min-w-0">
+            <span className="truncate" style={{ fontWeight: 500 }}>{e.action}</span>
+            {e.detail && (
+              <span
+                className="truncate"
+                style={{ fontSize: 12, color: "#64748d", marginTop: 1 }}
+                title={e.detail}
+              >
+                {e.detail}
+              </span>
+            )}
+          </span>
           <span className="flex items-center gap-3 flex-shrink-0">
             <span style={{ fontSize: 11, color: "#64748d" }}>{e.who}</span>
             <span style={{ fontSize: 11, color: "#94a3b8", fontFeatureSettings: '"tnum"' }}>
