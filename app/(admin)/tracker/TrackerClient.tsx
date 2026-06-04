@@ -73,12 +73,13 @@ type DatePreset = "all" | "7d" | "30d" | "90d" | "ytd" | "custom";
 // The user picks which date column the range applies to. "orderDate" keys
 // off the row's creation timestamp (matching the "Order Date" table column);
 // the other three filter on the form-entered scheduling dates.
-type DateField = "orderDate" | "discharge" | "requested" | "scheduled" | "dos";
+type DateField = "orderDate" | "discharge" | "requested" | "scheduled" | "completed" | "dos";
 const DATE_FIELD_OPTIONS: { value: DateField; label: string }[] = [
   { value: "orderDate", label: "Order Date" },
   { value: "discharge", label: "Scheduled Discharge Date" },
   { value: "requested", label: "Requested Delivery Date" },
   { value: "scheduled", label: "Scheduled Delivery Date" },
+  { value: "completed", label: "Completed Date" },
   { value: "dos",       label: "DOS Submitted" },
 ];
 // "Order Date" everywhere in the Tracker means the date the call came in
@@ -102,6 +103,10 @@ function isoDatesForField(o: OrderShape, field: DateField): string[] {
     case "scheduled":
       return o.items
         .map((it) => it.scheduledDeliveryDate)
+        .filter((iso): iso is string => !!iso);
+    case "completed":
+      return o.items
+        .map((it) => it.completedAt)
         .filter((iso): iso is string => !!iso);
   }
 }
