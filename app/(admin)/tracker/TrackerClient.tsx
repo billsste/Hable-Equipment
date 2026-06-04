@@ -139,6 +139,9 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
   // Driver filter — value is the driver's user-id as a string ("" = any).
   // Matches orders where any item is assigned to the selected driver.
   const [driverFilter, setDriverFilter] = useState("");
+  // CSR filter — value is the CSR's user-id as a string ("" = any).
+  // Matches orders where the order's CSR == selected user.
+  const [csrFilter, setCsrFilter] = useState("");
   // Door tag presence: "" = don't filter; "yes" = any item has ≥1 tag;
   // "no" = every item has 0 tags. Driver tag-count column is per-item.
   const [doorTagFilter, setDoorTagFilter] = useState<"" | "yes" | "no">("");
@@ -170,14 +173,14 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
       sortOrders(
         filterOrders(
           orders, search,
-          { authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, doorTagFilter, dateRange, dateField: dateFieldFilter },
+          { authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, csrFilter, doorTagFilter, dateRange, dateField: dateFieldFilter },
         ),
         sort,
       ),
-    [orders, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, doorTagFilter, dateRange, dateFieldFilter, sort],
+    [orders, search, authFilter, pendingDocFilter, verificationFilter, statusFilter, driverFilter, csrFilter, doorTagFilter, dateRange, dateFieldFilter, sort],
   );
   const hasFieldFilter =
-    authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || driverFilter !== "" || doorTagFilter !== "" || datePreset !== "all";
+    authFilter !== "" || pendingDocFilter !== "" || verificationFilter !== "" || statusFilter !== "" || driverFilter !== "" || csrFilter !== "" || doorTagFilter !== "" || datePreset !== "all";
 
   function toggleSort(key: SortKey) {
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -232,6 +235,10 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
             if (driverFilter) {
               const dn = lookups.dispatchers.find((d) => String(d.id) === driverFilter)?.name ?? driverFilter;
               chips.push(`Driver ${dn}`);
+            }
+            if (csrFilter) {
+              const cn = lookups.csrs.find((c) => String(c.id) === csrFilter)?.name ?? csrFilter;
+              chips.push(`CSR ${cn}`);
             }
             if (doorTagFilter === "yes") chips.push("Door Tags: any");
             else if (doorTagFilter === "no") chips.push("Door Tags: none");
@@ -311,6 +318,10 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
         driverFilter={driverFilter}
         onDriverFilterChange={setDriverFilter}
         driverOptions={lookups.dispatchers.map((d) => ({ value: String(d.id), label: d.name }))}
+        // CSR (filtered list comes from lookups.csrs)
+        csrFilter={csrFilter}
+        onCsrFilterChange={setCsrFilter}
+        csrOptions={lookups.csrs.map((c) => ({ value: String(c.id), label: c.name }))}
         // Door tags (presence)
         doorTagFilter={doorTagFilter}
         onDoorTagFilterChange={setDoorTagFilter}
@@ -330,6 +341,7 @@ export default function TrackerClient({ currentUser, initialOrders, initialNew, 
           setVerificationFilter("");
           setStatusFilter("");
           setDriverFilter("");
+          setCsrFilter("");
           setDoorTagFilter("");
           setDatePreset("all");
           setDateFrom("");
@@ -591,7 +603,7 @@ const FilterSelect = Combobox;
 // Inactive filters live behind the "+ Filter" menu; once added, the pill
 // stays in place even after the user clears it (via X) only because the
 // user explicitly removed it — adding it back is one click away.
-type FilterDim = "auth" | "pendingDoc" | "verification" | "status" | "driver" | "doorTag" | "date";
+type FilterDim = "auth" | "pendingDoc" | "verification" | "status" | "driver" | "csr" | "doorTag" | "date";
 // Full field labels — these match the form's column names verbatim so the
 // filter bar reads like "the field you're filtering on", not a shorthand.
 // Date uses a dynamic label (the picked date column) — handled inline.
@@ -601,6 +613,7 @@ const FILTER_DIM_LABEL: Record<FilterDim, string> = {
   verification: "Order Status",
   status: "Delivery Status",
   driver: "Driver",
+  csr: "CSR",
   doorTag: "Door Tags",
   date: "Date",
 };
@@ -612,6 +625,7 @@ function FilterBar({
   verificationFilter, onVerificationFilterChange,
   statusFilter, onStatusFilterChange,
   driverFilter, onDriverFilterChange, driverOptions,
+  csrFilter, onCsrFilterChange, csrOptions,
   doorTagFilter, onDoorTagFilterChange,
   dateFieldFilter, onDateFieldFilterChange,
   datePreset, onDatePresetChange,
@@ -627,6 +641,8 @@ function FilterBar({
   statusFilter: string; onStatusFilterChange: (v: string) => void;
   driverFilter: string; onDriverFilterChange: (v: string) => void;
   driverOptions: Array<{ value: string; label: string }>;
+  csrFilter: string; onCsrFilterChange: (v: string) => void;
+  csrOptions: Array<{ value: string; label: string }>;
   doorTagFilter: "" | "yes" | "no"; onDoorTagFilterChange: (v: "" | "yes" | "no") => void;
   dateFieldFilter: DateField; onDateFieldFilterChange: (v: DateField) => void;
   datePreset: DatePreset; onDatePresetChange: (v: DatePreset) => void;
@@ -646,6 +662,7 @@ function FilterBar({
     if (verificationFilter) init.add("verification");
     if (statusFilter) init.add("status");
     if (driverFilter) init.add("driver");
+    if (csrFilter) init.add("csr");
     if (doorTagFilter) init.add("doorTag");
     if (datePreset !== "all") init.add("date");
     return init;
@@ -676,6 +693,7 @@ function FilterBar({
     else if (dim === "verification") onVerificationFilterChange("");
     else if (dim === "status") onStatusFilterChange("");
     else if (dim === "driver") onDriverFilterChange("");
+    else if (dim === "csr") onCsrFilterChange("");
     else if (dim === "doorTag") onDoorTagFilterChange("");
     else if (dim === "date") {
       onDatePresetChange("all");
@@ -762,6 +780,22 @@ function FilterBar({
             onChange={onDriverFilterChange}
             placeholder="Pick driver"
             options={sortByLabel(driverOptions)}
+            width={220}
+          />
+        </FilterChip>
+      )}
+      {expanded.has("csr") && (
+        // CSR filter — matches orders whose CSR == picked user. List comes
+        // from the Lookups payload (active users with csr in roles[]).
+        <FilterChip
+          label={FILTER_DIM_LABEL.csr}
+          onRemove={() => removeDim("csr")}
+        >
+          <FilterSelect
+            value={csrFilter}
+            onChange={onCsrFilterChange}
+            placeholder="Pick CSR"
+            options={sortByLabel(csrOptions)}
             width={220}
           />
         </FilterChip>
@@ -985,6 +1019,7 @@ function filterOrders(
     authFilter: string; pendingDocFilter: string;
     verificationFilter: string; statusFilter: string;
     driverFilter: string;
+    csrFilter: string;
     doorTagFilter: "" | "yes" | "no";
     dateRange: { from: string; to: string } | null;
     dateField: DateField;
@@ -1007,6 +1042,10 @@ function filterOrders(
   if (fields.driverFilter) {
     const driverId = Number(fields.driverFilter);
     list = list.filter((o) => o.items.some((it) => it.driverId === driverId));
+  }
+  if (fields.csrFilter) {
+    const csrId = Number(fields.csrFilter);
+    list = list.filter((o) => o.csrId === csrId);
   }
   if (fields.doorTagFilter === "yes") {
     list = list.filter((o) => o.items.some((it) => (it.doorTagCount ?? 0) > 0));
