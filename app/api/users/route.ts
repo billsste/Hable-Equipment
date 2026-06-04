@@ -20,7 +20,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  // Role gate dropped per Brent 2026-06 — any authenticated user.
+  // Brent 2026-06 follow-up: only admins (supplier) can create users.
+  // Viewing the user list (GET above) stays open to everyone.
+  if (user.role !== "supplier") {
+    return NextResponse.json({ error: "Forbidden — admin only" }, { status: 403 });
+  }
 
   try {
     const { name, email, password, role, roles } = await request.json();

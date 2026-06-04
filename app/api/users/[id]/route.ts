@@ -12,7 +12,12 @@ export async function PATCH(
 ) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  // Role gate dropped per Brent 2026-06 — any authenticated user.
+  // Brent 2026-06 follow-up: only admins (supplier) can manage user
+  // accounts. Combined with the self-demotion guard below, that means an
+  // admin can edit anyone except themselves out of admin.
+  if (user.role !== "supplier") {
+    return NextResponse.json({ error: "Forbidden — admin only" }, { status: 403 });
+  }
 
   const { id } = await params;
   const targetId = Number(id);
@@ -121,7 +126,10 @@ export async function DELETE(
 ) {
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  // Role gate dropped per Brent 2026-06 — any authenticated user.
+  // Admin-only — see the PATCH gate above.
+  if (user.role !== "supplier") {
+    return NextResponse.json({ error: "Forbidden — admin only" }, { status: 403 });
+  }
 
   const { id } = await params;
   const targetId = Number(id);

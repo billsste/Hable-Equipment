@@ -80,9 +80,10 @@ export default function UsersClient({
     downloadCsv(`users-${new Date().toISOString().slice(0, 10)}.csv`, rows);
   }
 
-  // Per Brent 2026-06: every authenticated user can manage every other
-  // user. Self-edit guard stays — prevents accidental self-demotion.
-  const canModify = (user: SafeUser) => user.id !== me.id;
+  // Brent 2026-06 follow-up: user-management stays admin-only — non-admins
+  // can view the list but can't edit roles. The self-edit guard remains
+  // to prevent an admin from accidentally demoting themselves out of admin.
+  const canModify = (user: SafeUser) => user.id !== me.id && me.role === "supplier";
 
   return (
     <div className="p-4 md:p-6">
