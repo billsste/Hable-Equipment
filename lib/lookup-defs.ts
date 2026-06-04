@@ -180,48 +180,13 @@ export const LOOKUP_DEFS: Record<string, LookupDef> = {
     ],
     searchKeys: ["label", "key"],
   },
-  "whats-needed": {
-    slug: "whats-needed",
-    singular: "Verification Item",
-    plural: "What's Needed",
-    description: "Items still required during verification (Dx, signature, face sheet, etc.).",
-    idType: "string",
-    hasKey: true,
-    columns: [
-      { key: "key", label: "Key", width: 110, render: "code" },
-      { key: "label", label: "Label" },
-      { key: "sortOrder", label: "Sort", width: 80 },
-      { key: "active", label: "Status", width: 100, render: "boolean" },
-    ],
-    fields: [
-      { key: "key", label: "Key", type: "text", required: true, uppercase: true, immutable: true, helper: "Referenced by conditionality rules — keep stable." },
-      { key: "label", label: "Display Label", type: "text", required: true },
-      SORT_FIELD,
-      ACTIVE_FIELD,
-    ],
-    searchKeys: ["label", "key"],
-  },
-  "item-types": {
-    slug: "item-types",
-    singular: "Item Type",
-    plural: "Item Types",
-    description: "High-level item type classification.",
-    idType: "string",
-    hasKey: true,
-    columns: [
-      { key: "key", label: "Key", width: 110, render: "code" },
-      { key: "label", label: "Label" },
-      { key: "sortOrder", label: "Sort", width: 80 },
-      { key: "active", label: "Status", width: 100, render: "boolean" },
-    ],
-    fields: [
-      { key: "key", label: "Key", type: "text", required: true, uppercase: true, immutable: true },
-      { key: "label", label: "Display Label", type: "text", required: true },
-      SORT_FIELD,
-      ACTIVE_FIELD,
-    ],
-    searchKeys: ["label", "key"],
-  },
+  // "whats-needed" and "item-types" tabs removed from the admin UI in
+  // 2026-06: the Tracker form now uses a hardcoded PENDING_DOCUMENT_OPTIONS
+  // list (5 keys: DIAGNOSIS_CODE / FACE_SHEET / NOTES / PICKUP_TICKET /
+  // SIGNATURE) writing to Order.pendingDocuments, and no form consumes
+  // itemTypes. The /api/lookups/whats-needed + /api/lookups/item-types
+  // handlers in lib/lookups.ts stay in place for back-compat; the DB tables
+  // and Order.whatsNeeded column are vestigial but harmless.
   "cancellation-reasons": {
     slug: "cancellation-reasons",
     singular: "Cancellation Reason",
