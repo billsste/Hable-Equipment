@@ -355,32 +355,15 @@ export function NotesThread({
   );
 }
 
-// Lifecycle-only filter. Per-field edits (Note added, Patient first name set,
-// etc.) are deliberately hidden here — they live in /audit-log. Keep this set
-// in sync with the action strings emitted by the order routes.
-const LIFECYCLE_ACTIONS = new Set<string>([
-  "Order created",
-  "Ticket printed",
-  "Dispatcher acknowledged",
-  "Out for delivery",
-  "Door tag",
-  "Delivered",
-  "Cancelled",
-  "Status changed",
-  "Auth status changed",
-  // Per-item assignment events emitted by perItemEventDescriptions in the
-  // PATCH route — surface them on the History tab so the driver / completion
-  // / door-tag timeline is readable in one place.
-  "Driver assigned",
-  "Item completed",
-  "Item completion cleared",
-]);
-
 export function HistoryReadonly({ order }: { order: OrderShape }) {
+  // Show every event written for the order — the History tab is the
+  // per-order audit feed (lifecycle + field edits + notes + items + auth).
+  // The system-wide Audit Log page is the cross-order view; this is the
+  // single-order view. Each row carries action + detail so the reader can
+  // see exactly what changed.
   const events = useMemo(
     () =>
       (order.history ?? [])
-        .filter((e) => LIFECYCLE_ACTIONS.has(e.action))
         .slice()
         .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()),
     [order.history],

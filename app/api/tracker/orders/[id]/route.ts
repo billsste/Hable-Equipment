@@ -29,8 +29,8 @@ const VALID_WORK_ORDER_TYPES = Object.keys(WORK_ORDER_TYPE_LABELS) as WorkOrderT
 import type { AuthStatus, DeductibleStatus, HandlerType, OutcomeStatus, Prisma, WorkOrderType } from "@prisma/client";
 
 const VALID_OUTCOME_STATUSES: ReadonlyArray<OutcomeStatus> = [
-  "ACTIVE", "ON_HOLD", "OUT_FOR_DELIVERY", "DOOR_TAG", "LOOSE_ENDS", "TRANSFERRED",
-  "REJECTED", "CANCELLED", "DELIVERED", "WRITE_OFF",
+  "ACTIVE", "ON_HOLD", "HELD_FOR_AUTH", "OUT_FOR_DELIVERY", "DOOR_TAG",
+  "LOOSE_ENDS", "TRANSFERRED", "REJECTED", "CANCELLED", "DELIVERED", "WRITE_OFF",
 ];
 
 const ALLOWED_PATCH_ROLES: ReadonlyArray<string> = ["supplier", "csr", "driver"];
@@ -275,7 +275,10 @@ export async function PATCH(
       // clear the cancelledAt stamp; everything else stamps it. OUT_FOR_DELIVERY
       // and DOOR_TAG also stamp their workflow timestamps so the dashboard chips
       // and stage derivation pick them up.
-      if (newStatus === "DELIVERED" || newStatus === "ACTIVE") {
+      if (newStatus === "DELIVERED" || newStatus === "ACTIVE" || newStatus === "HELD_FOR_AUTH") {
+        // HELD_FOR_AUTH is a paused state, not a cancellation — keep the
+        // order out of the cancelled-stamp branch so it can resume cleanly
+        // once auth comes back.
         data.cancelledAt = null;
         nextCancelledAt = null;
       } else if (newStatus === "OUT_FOR_DELIVERY") {

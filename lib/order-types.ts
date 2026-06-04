@@ -128,11 +128,17 @@ const IN_FLIGHT_STATUSES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE", "OUT_FOR_DELIVERY", "DOOR_TAG",
 ];
 
+// Paused (not terminal) — order can come back to in-flight. ON_HOLD is
+// generic "stopped"; HELD_FOR_AUTH is specifically "waiting on insurance
+// authorization to clear". Both stay in the "Open" view because the
+// order isn't done yet.
+const PAUSED_STATUSES: ReadonlyArray<OutcomeStatus> = ["ON_HOLD", "HELD_FOR_AUTH"];
+
 // Terminal = end-state, won't progress further. DELIVERED (success) +
 // cancellation-family (CANCELLED / LOOSE_ENDS / TRANSFERRED / REJECTED /
-// WRITE_OFF). ON_HOLD is paused, not terminal — it can come off hold.
+// WRITE_OFF). ON_HOLD and HELD_FOR_AUTH are paused, not terminal.
 export function isTerminalStatus(s: OutcomeStatus): boolean {
-  return !IN_FLIGHT_STATUSES.includes(s) && s !== "ON_HOLD";
+  return !IN_FLIGHT_STATUSES.includes(s) && !PAUSED_STATUSES.includes(s);
 }
 
 // Blocks driver assignment. Anything not in-flight and not DELIVERED is a
@@ -142,11 +148,13 @@ export function isBlockingStatus(s: OutcomeStatus): boolean {
   return !IN_FLIGHT_STATUSES.includes(s) && s !== "DELIVERED";
 }
 
-// Needs a reason note in the comments thread. Identical to the blocking set:
-// hold/cancel/transfer/etc. all want a written explanation; in-flight states
+// Needs a reason note in the comments thread. Identical to the blocking set
+// except HELD_FOR_AUTH — its reason is implicit (waiting on auth), so we
+// don't make the user retype it. ON_HOLD / cancel / transfer / etc. all
+// still want a written explanation; in-flight states
 // and DELIVERED don't.
 export function requiresReason(s: OutcomeStatus): boolean {
-  return !IN_FLIGHT_STATUSES.includes(s) && s !== "DELIVERED";
+  return !IN_FLIGHT_STATUSES.includes(s) && s !== "DELIVERED" && s !== "HELD_FOR_AUTH";
 }
 
 export function authAgingDays(authStatus: AuthStatus, authSubmittedAt: string | null): number | null {
@@ -269,6 +277,7 @@ export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
 export const STATUS_LABELS: Record<OutcomeStatus, string> = {
   ACTIVE: "TBD",
   ON_HOLD: "On Hold",
+  HELD_FOR_AUTH: "Held for Authorization",
   OUT_FOR_DELIVERY: "Out for Delivery",
   DOOR_TAG: "Door Tag",
   LOOSE_ENDS: "Loose Ends / On Call",
@@ -287,6 +296,7 @@ export const STATUS_LABELS: Record<OutcomeStatus, string> = {
 export const DELIVERY_STATUS_PICKER_VALUES: ReadonlyArray<OutcomeStatus> = [
   "ACTIVE",            // TBD
   "ON_HOLD",
+  "HELD_FOR_AUTH",
   "OUT_FOR_DELIVERY",
   // DOOR_TAG removed from the manual picker — door tags are now tracked
   // per-item in Stage 3 (OrderItem.doorTagCount). Existing rows that already
@@ -311,6 +321,7 @@ export const AUTH_PICKER_VALUES: ReadonlyArray<AuthStatus> = [
 export const STATUS_COLORS: Record<OutcomeStatus, { bg: string; color: string }> = {
   ACTIVE:           { bg: "rgba(83,58,253,0.10)",   color: "#4434d4" },
   ON_HOLD:          { bg: "rgba(245,158,11,0.16)",  color: "#9b6829" },
+  HELD_FOR_AUTH:    { bg: "rgba(234,34,97,0.10)",   color: "#b41850" },
   OUT_FOR_DELIVERY: { bg: "rgba(155,104,41,0.18)",  color: "#7a5320" },
   DOOR_TAG:         { bg: "rgba(139,92,246,0.16)",  color: "#6d3fbf" },
   LOOSE_ENDS:       { bg: "rgba(245,158,11,0.18)",  color: "#7a5320" },

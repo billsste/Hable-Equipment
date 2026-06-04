@@ -260,6 +260,7 @@ enum HandlerType {
 enum OutcomeStatus {
   ACTIVE
   ON_HOLD
+  HELD_FOR_AUTH
   OUT_FOR_DELIVERY
   DOOR_TAG
   LOOSE_ENDS
