@@ -782,7 +782,7 @@ export default function OrderForm(props: Props) {
                   iso={isCreate ? (dischargeDate || null) : (initial as OrderShape).dischargeDate}
                 />
                 <ReadonlyDate
-                  label="Requested Delivery"
+                  label="Requested Delivery Date"
                   iso={isCreate ? (requestedDeliveryDate || null) : (initial as OrderShape).requestedDeliveryDate}
                 />
               </div>
@@ -1298,11 +1298,15 @@ function ReadonlyDate({ label, iso }: { label: string; iso: string | null }) {
   );
 }
 
+// Stage 1 stores these as date-only ISO ("2026-06-04") via <input type="date">,
+// which is timezone-naive. Render in UTC here so a user in EDT doesn't see
+// "Jun 3" when Stage 1 captured "Jun 4". Match formatOrderDate / formatDc.
 function formatBriefingDate(iso: string | null): string | null {
   if (!iso) return null;
   return new Date(iso).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
