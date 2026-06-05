@@ -51,6 +51,31 @@ function effectiveDeliveredAt(o: OrderShape): string | null {
 function orderDateOf(o: OrderShape): string {
   return o.callReceivedDate ?? o.createdAt;
 }
+
+// A "delivery trip" is items grouped by (orderId, driverId, scheduledDate)
+// per Steve 2026-06: Robert dropping a bed + commode at the same patient
+// on Thursday is one delivery, not two. Items without a driver OR a
+// scheduled date don't count (tentative assignments — not yet a real
+// trip). This collapses the per-item rows into the unit operations
+// actually think in. Used by the Driver dimension and the
+// "Deliveries by driver" panel.
+type Trip = { driverId: number; driverName: string; scheduledDate: string };
+function tripsInOrder(o: OrderShape): Trip[] {
+  const seen = new Map<string, Trip>();
+  for (const it of o.items) {
+    if (it.driverId == null || !it.scheduledDeliveryDate) continue;
+    const date = it.scheduledDeliveryDate.slice(0, 10);
+    const key = `${it.driverId}::${date}`;
+    if (!seen.has(key)) {
+      seen.set(key, {
+        driverId: it.driverId,
+        driverName: it.driverName ?? `#${it.driverId}`,
+        scheduledDate: date,
+      });
+    }
+  }
+  return Array.from(seen.values());
+}
 import { downloadCsv } from "@/lib/utils";
 
 type Props = {
@@ -539,6 +564,22 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
   const kpisCurrent = useMemo(() => computeKpis(current), [current]);
   const kpisPrior = useMemo(() => (compare ? computeKpis(prior) : null), [prior, compare]);
 
+  // Per-driver trip counts for the new "Deliveries by driver" panel. Items
+  // with no driver OR no scheduled date are skipped (not real trips yet).
+  // Same grouping rule as the Driver dimension above so the two views
+  // always agree.
+  const deliveriesByDriver = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const o of current) {
+      for (const trip of tripsInOrder(o)) {
+        counts.set(trip.driverName, (counts.get(trip.driverName) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([driverName, trips]) => ({ driverName, trips }))
+      .sort((a, b) => b.trips - a.trips);
+  }, [current]);
+
   const buckets = useMemo(() => enumerateBuckets(from, to, granularity), [from, to, granularity]);
 
   const volumeData = useMemo(() => {
@@ -669,6 +710,8 @@ export default function ReportingClient({ orders, insurance, companies, equipmen
       <VolumeCard data={volumeData} compare={compare} />
 
       <FunnelCard funnel={funnel} />
+
+      <DeliveriesByDriverCard rows={deliveriesByDriver} />
 
       <ExplorerCard
         rowDim={explorerRow}
@@ -871,8 +914,18 @@ function rowContributions(o: OrderShape, dim: Dimension, args: BreakdownArgs): C
   switch (dim) {
     case "facility":
       return [{ rowKey: o.facilityName ?? "Unassigned", rowLabel: o.facilityName ?? "Unassigned", weight: 1 }];
-    case "driver":
-      return [{ rowKey: driverDisplay(o) ?? "Unassigned", rowLabel: driverDisplay(o) ?? "Unassigned", weight: 1 }];
+    case "driver": {
+      // Per-trip contribution per Steve 2026-06: bed + commode → Robert
+      // on Thursday = 1 trip for Robert, not 2 item-rows. An order with
+      // Robert+Thursday AND Gabe+Thursday emits two contributions — one
+      // for each driver's trip. Items not yet driver-assigned OR
+      // unscheduled fall through to a single "Unassigned" contribution.
+      const trips = tripsInOrder(o);
+      if (trips.length === 0) {
+        return [{ rowKey: "Unassigned", rowLabel: "Unassigned", weight: 1 }];
+      }
+      return trips.map((t) => ({ rowKey: t.driverName, rowLabel: t.driverName, weight: 1 }));
+    }
     case "company":
       if (o.fulfillmentCompanies.length === 0) {
         return [{ rowKey: "Unassigned", rowLabel: "Unassigned", weight: 1 }];
@@ -1520,6 +1573,66 @@ function FunnelCard({ funnel }: { funnel: { stages: FunnelStage[]; cancelled: nu
               </div>
             );
           })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Per-driver trip count for the period. A trip is the (orderId, driverId,
+// scheduledDate) triple — see tripsInOrder above. Renders a sorted list
+// of "Driver · count" with a total row, plus a CSV export for the
+// dispatcher to pull into Excel.
+function DeliveriesByDriverCard({ rows }: { rows: Array<{ driverName: string; trips: number }> }) {
+  const total = rows.reduce((sum, r) => sum + r.trips, 0);
+  function handleExport() {
+    const csv: Array<Array<string | number>> = [];
+    csv.push(["Driver", "Deliveries"]);
+    for (const r of rows) csv.push([r.driverName, r.trips]);
+    csv.push(["Total", total]);
+    downloadCsv("deliveries-by-driver", csv);
+  }
+  return (
+    <Card
+      title="Deliveries by driver"
+      subtitle="A delivery is one driver + one order + one scheduled date — bed + commode for the same patient on the same day = 1 delivery. Unscheduled items don't count."
+      right={
+        rows.length > 0 ? (
+          <button onClick={handleExport} style={exportBtnStyle}>
+            <Download size={14} />
+            Export CSV
+          </button>
+        ) : null
+      }
+    >
+      {rows.length === 0 ? (
+        <Empty message="No scheduled deliveries in this period yet." />
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, ...firstColStyle }}>Driver</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>Deliveries</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.driverName}>
+                  <td style={{ ...tdStyle, ...firstColStyle, color: DARK, fontWeight: 500 }}>{r.driverName}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: DARK, fontWeight: 500, fontFeatureSettings: '"tnum"' }}>
+                    {r.trips.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: `2px solid ${BORDER}` }}>
+                <td style={{ ...tdStyle, ...firstColStyle, color: MUTED, fontWeight: 500, textTransform: "uppercase", fontSize: 11, letterSpacing: "0.04em" }}>Total</td>
+                <td style={{ ...tdStyle, textAlign: "right", color: DARK, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>
+                  {total.toLocaleString()}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
     </Card>

@@ -1460,7 +1460,7 @@ function exportCsv(rows: OrderShape[]): void {
     // companies + notes
     "Fulfillment Companies", "Notes",
     // per-item slice — one row per item
-    "Driver", "Item", "Quantity", "Category", "Abbreviation",
+    "Driver", "Trip ID", "Item", "Quantity", "Category", "Abbreviation",
     "HCPCS Code", "Equipment Delivery Status", "Scheduled Delivery Date", "Completed Date", "Door Tags",
     // bookkeeping
     "Created At", "Updated At",
@@ -1516,16 +1516,24 @@ function exportCsv(rows: OrderShape[]): void {
     const trailingColumns: string[] = [fmtDate(o.createdAt), fmtDate(o.updatedAt)];
 
     if (o.items.length === 0) {
-      // 10 placeholders matches the per-item header span: Driver, Item,
-      // Quantity, Category, Abbreviation, HCPCS, Equipment Delivery Status,
-      // Scheduled, Completed, Door Tags
-      data.push([...orderColumns, "", "", "", "", "", "", "", "", "", "", ...trailingColumns]);
+      // 11 placeholders matches the per-item header span: Driver, Trip ID,
+      // Item, Quantity, Category, Abbreviation, HCPCS, Equipment Delivery
+      // Status, Scheduled, Completed, Door Tags
+      data.push([...orderColumns, "", "", "", "", "", "", "", "", "", "", "", ...trailingColumns]);
       continue;
     }
     for (const it of o.items) {
+      // Trip ID = (orderId, driverId, scheduledDate) triple. Items
+      // sharing a Trip ID are one delivery (Steve 2026-06: Robert
+      // dropping bed + commode at the same patient on the same day
+      // = 1 delivery). Empty when driver or scheduled date is unset.
+      const tripId = it.driverId != null && it.scheduledDeliveryDate
+        ? `${o.id}-${it.driverId}-${it.scheduledDeliveryDate.slice(0, 10)}`
+        : "";
       data.push([
         ...orderColumns,
         it.driverName ?? "",
+        tripId,
         it.name,
         String(it.quantity),
         it.category ?? "",

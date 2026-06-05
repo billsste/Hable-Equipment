@@ -1182,8 +1182,11 @@ function PerItemDrivers({
   driverLookup: Lookups["dispatchers"];
   onChange: (items: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>) => void;
 }) {
-  function patch(idx: number, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>) {
-    onChange(items.map((it, i) => (i === idx ? { ...it, ...p } : it)));
+  // Patch by equipmentId (stable across re-renders) instead of index —
+  // we sort the visible items by trip below, so render-order index ≠
+  // items-array index.
+  function patch(equipmentId: string, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>) {
+    onChange(items.map((it) => (it.equipmentId === equipmentId ? { ...it, ...p } : it)));
   }
   // Grid: Equipment | Status | Driver | Scheduled | Completed | Door Tags.
   // Status sits second so a CSR scanning a row reads "this piece of
@@ -1198,6 +1201,71 @@ function PerItemDrivers({
     return DELIVERY_STATUS_PICKER_VALUES.includes(current)
       ? [...DELIVERY_STATUS_PICKER_VALUES]
       : [current, ...DELIVERY_STATUS_PICKER_VALUES];
+  }
+
+  // Group items by (driverId, scheduledDeliveryDate) so the dispatcher
+  // can see at a glance "Robert · Thu Jun 6 — bed, commode" as one trip
+  // (Steve 2026-06). Per-item fields stay editable; editing one row's
+  // driver or date silently moves it into the matching trip on next
+  // render. Three bucket types:
+  //   - real trip: both driver + scheduledDate set
+  //   - tentative: driver set, no date yet (or vice versa)
+  //   - unassigned: no driver
+  type TripKey = string;
+  function tripKey(it: typeof items[number]): TripKey {
+    if (it.driverId == null) return "__unassigned__";
+    if (!it.scheduledDeliveryDate) return `pending::${it.driverId}`;
+    return `trip::${it.driverId}::${it.scheduledDeliveryDate}`;
+  }
+  // Stable sort: trips with driver+date first (ordered by date, then
+  // driver name), then tentative, then unassigned. Within a trip items
+  // keep their original insertion order so adding equipment doesn't
+  // shuffle the existing rows.
+  const sortBuckets = items.map((it, idx) => {
+    let bucket: number;
+    if (it.driverId == null) bucket = 2;
+    else if (!it.scheduledDeliveryDate) bucket = 1;
+    else bucket = 0;
+    return { it, idx, bucket, key: tripKey(it) };
+  });
+  const sorted = sortBuckets
+    .slice()
+    .sort((a, b) => {
+      if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+      if (a.key !== b.key) return a.key < b.key ? -1 : 1;
+      return a.idx - b.idx;
+    });
+  const tripCounts = new Map<TripKey, number>();
+  for (const s of sorted) tripCounts.set(s.key, (tripCounts.get(s.key) ?? 0) + 1);
+  // Walk sorted; emit a header whenever the trip key changes.
+  type RenderEntry =
+    | { kind: "header"; key: TripKey; label: string; count: number }
+    | { kind: "item"; it: typeof items[number] };
+  const entries: RenderEntry[] = [];
+  let prevKey: TripKey | null = null;
+  for (const s of sorted) {
+    if (s.key !== prevKey) {
+      let label: string;
+      if (s.it.driverId == null) {
+        label = "Unassigned";
+      } else {
+        const driverName = driverLookup.find((d) => d.id === s.it.driverId)?.name ?? `Driver #${s.it.driverId}`;
+        if (!s.it.scheduledDeliveryDate) {
+          label = `${driverName} · Unscheduled`;
+        } else {
+          const dateLabel = new Date(s.it.scheduledDeliveryDate + "T00:00:00.000Z").toLocaleDateString("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            timeZone: "UTC",
+          });
+          label = `${driverName} · ${dateLabel}`;
+        }
+      }
+      entries.push({ kind: "header", key: s.key, label, count: tripCounts.get(s.key) ?? 1 });
+      prevKey = s.key;
+    }
+    entries.push({ kind: "item", it: s.it });
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1221,7 +1289,51 @@ function PerItemDrivers({
         <span>Completed Date</span>
         <span>Door Tags</span>
       </div>
-      {items.map((it, idx) => {
+      {entries.map((entry) => {
+        if (entry.kind === "header") {
+          // Trip header — full-width strip above the items in this trip
+          // group. Multi-item trips ("Robert · Thu Jun 6 (2)") read as
+          // one delivery; solo items still get a header so the visual
+          // language is consistent.
+          return (
+            <div
+              key={`header::${entry.key}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 10px",
+                marginTop: 2,
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "#4434d4",
+                background: "rgba(83,58,253,0.04)",
+                borderLeft: "3px solid rgba(83,58,253,0.4)",
+                borderRadius: "4px 4px 0 0",
+              }}
+            >
+              <span>{entry.label}</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: "#64748d",
+                  background: "#fff",
+                  border: "1px solid #e5edf5",
+                  borderRadius: 999,
+                  padding: "1px 7px",
+                  fontWeight: 500,
+                  letterSpacing: 0,
+                  textTransform: "none",
+                }}
+              >
+                {entry.count} {entry.count === 1 ? "item" : "items"}
+              </span>
+            </div>
+          );
+        }
+        const it = entry.it;
         const eq = equipmentLookup.find((e) => e.id === it.equipmentId);
         const label = eq ? `${eq.name}${it.quantity > 1 ? ` ×${it.quantity}` : ""}` : `Unknown equipment (${it.equipmentId.slice(0, 8)})`;
         return (
@@ -1250,7 +1362,7 @@ function PerItemDrivers({
             </div>
             <select
               value={it.deliveryStatus}
-              onChange={(e) => patch(idx, { deliveryStatus: e.target.value as OutcomeStatus })}
+              onChange={(e) => patch(it.equipmentId, { deliveryStatus: e.target.value as OutcomeStatus })}
               style={{
                 padding: "6px 8px",
                 fontSize: 13,
@@ -1267,7 +1379,7 @@ function PerItemDrivers({
             </select>
             <select
               value={it.driverId ?? ""}
-              onChange={(e) => patch(idx, { driverId: e.target.value ? Number(e.target.value) : null })}
+              onChange={(e) => patch(it.equipmentId, { driverId: e.target.value ? Number(e.target.value) : null })}
               style={{
                 padding: "6px 8px",
                 fontSize: 13,
@@ -1285,7 +1397,7 @@ function PerItemDrivers({
             <input
               type="date"
               value={it.scheduledDeliveryDate}
-              onChange={(e) => patch(idx, { scheduledDeliveryDate: e.target.value })}
+              onChange={(e) => patch(it.equipmentId, { scheduledDeliveryDate: e.target.value })}
               style={{
                 padding: "6px 8px",
                 fontSize: 13,
@@ -1300,7 +1412,7 @@ function PerItemDrivers({
             <input
               type="date"
               value={it.completedAt}
-              onChange={(e) => patch(idx, { completedAt: e.target.value })}
+              onChange={(e) => patch(it.equipmentId, { completedAt: e.target.value })}
               style={{
                 padding: "6px 8px",
                 fontSize: 13,
@@ -1314,7 +1426,7 @@ function PerItemDrivers({
             />
             <DoorTagStepper
               value={it.doorTagCount}
-              onChange={(next) => patch(idx, { doorTagCount: next })}
+              onChange={(next) => patch(it.equipmentId, { doorTagCount: next })}
             />
           </div>
         );
