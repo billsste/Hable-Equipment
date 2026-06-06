@@ -1186,9 +1186,12 @@ function PerItemDrivers({
   function patch(equipmentId: string, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>) {
     onChange(items.map((it) => (it.equipmentId === equipmentId ? { ...it, ...p } : it)));
   }
-  // Propagate a driver/date change from a trip header to every item in
-  // that trip (Steve 2026-06: same driver delivering 2 items = 1 trip).
-  function patchTripGroup(tripKey: string, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string }>) {
+  // Propagate a delivery-level field change to every item in the trip.
+  // Steve 2026-06: a delivery is one driver, one date, one status, one
+  // completed date, one door-tag count — even if the truck carries
+  // multiple pieces of equipment. The data model keeps the fields
+  // per-item (no schema change), but the UI treats them as trip-level.
+  function patchTripGroup(tripKey: string, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string; deliveryStatus: OutcomeStatus; completedAt: string; doorTagCount: number }>) {
     onChange(items.map((it) => (keyForItem(it) === tripKey ? { ...it, ...p } : it)));
   }
   // Move a single item out of a multi-item trip — clear its driver +
@@ -1238,10 +1241,6 @@ function PerItemDrivers({
       });
   })();
 
-  // 4-col layout for items inside real / pending trips — driver and
-  // scheduled date live in the trip header above. The 6th column is a
-  // small "Move" link to eject the item from this trip.
-  const tripItemCols = "minmax(0, 1.6fr) minmax(0, 1.3fr) minmax(0, 1fr) 110px 70px";
   // 6-col layout for unassigned items — they keep inline driver + date
   // pickers because there's no trip yet to inherit from.
   const unassignedItemCols = "minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 110px";
@@ -1288,8 +1287,24 @@ function PerItemDrivers({
     );
   }
 
+  // Field labels for the trip-level field row (Status / Completed / Door Tags).
+  const tripFieldHeaderStyle: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    color: "#4434d4",
+  };
+  const tripCardHeaderLabelStyle: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    color: "#4434d4",
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {tripGroups.map((group) => {
         // Reference values for the trip header. Items in a group share
         // driverId + scheduledDate by definition; take them from the
@@ -1300,13 +1315,14 @@ function PerItemDrivers({
           : "Unassigned";
         const isUnassignedGroup = group.bucket === 2;
         const count = group.itemList.length;
+        const isMultiItem = count > 1;
 
-        return (
-          <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {/* Trip header — for real / pending trips, holds editable
-                Driver + Scheduled Date inputs that propagate to every
-                item in the trip. For Unassigned, it's just a label. */}
-            {isUnassignedGroup ? (
+        if (isUnassignedGroup) {
+          // Unassigned items render as the old per-row layout — there's
+          // no trip to share fields with yet. Picking a driver on any
+          // row moves it into a trip card on the next render.
+          return (
+            <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <div
                 style={{
                   display: "flex",
@@ -1331,92 +1347,6 @@ function PerItemDrivers({
                   Pick a driver per row to form a delivery.
                 </span>
               </div>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1fr) auto",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "8px 10px",
-                  background: "rgba(83,58,253,0.04)",
-                  borderLeft: "3px solid rgba(83,58,253,0.4)",
-                  borderRadius: "4px 4px 0 0",
-                }}
-              >
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "#4434d4" }}>
-                    Driver · this delivery
-                  </div>
-                  <select
-                    value={rep.driverId ?? ""}
-                    onChange={(e) => patchTripGroup(group.key, { driverId: e.target.value ? Number(e.target.value) : null })}
-                    style={{ padding: "6px 8px", fontSize: 13, fontWeight: 500, color: "#061b31", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4 }}
-                    aria-label="Trip driver"
-                  >
-                    <option value="">Unassigned</option>
-                    {driverLookup.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "#4434d4" }}>
-                    Scheduled Delivery Date
-                  </div>
-                  <input
-                    type="date"
-                    value={rep.scheduledDeliveryDate}
-                    onChange={(e) => patchTripGroup(group.key, { scheduledDeliveryDate: e.target.value })}
-                    style={{ padding: "6px 8px", fontSize: 13, color: "#061b31", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, fontFeatureSettings: '"tnum"' }}
-                    aria-label="Trip scheduled delivery date"
-                  />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "end", paddingBottom: 4 }}>
-                  <span style={{ fontSize: 11, color: "#64748d", whiteSpace: "nowrap" }}>
-                    {driverName}{rep.scheduledDeliveryDate ? ` · ${new Date(rep.scheduledDeliveryDate + "T00:00:00.000Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })}` : " · Unscheduled"}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "#64748d",
-                      background: "#fff",
-                      border: "1px solid #e5edf5",
-                      borderRadius: 999,
-                      padding: "1px 7px",
-                      fontWeight: 500,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {count} {count === 1 ? "item" : "items"}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Items in this trip */}
-            {!isUnassignedGroup && (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: tripItemCols,
-                  gap: 8,
-                  padding: "0 10px",
-                  fontSize: 11,
-                  fontWeight: 500,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  color: "#64748d",
-                }}
-              >
-                <span>Equipment</span>
-                <span>Equipment Delivery Status</span>
-                <span>Completed Date</span>
-                <span>Door Tags</span>
-                <span></span>
-              </div>
-            )}
-            {isUnassignedGroup && (
               <div
                 style={{
                   display: "grid",
@@ -1437,65 +1367,12 @@ function PerItemDrivers({
                 <span>Completed Date</span>
                 <span>Door Tags</span>
               </div>
-            )}
-
-            {group.itemList.map((it) => {
-              if (isUnassignedGroup) {
-                // Full 6-col row for unassigned items — Driver +
-                // Scheduled inline so user can assign without going to
-                // a trip header.
-                return (
-                  <div
-                    key={it.equipmentId}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: unassignedItemCols,
-                      gap: 8,
-                      padding: "8px 10px",
-                      background: "#f6f9fc",
-                      border: "1px solid #e5edf5",
-                      borderRadius: 4,
-                      alignItems: "center",
-                    }}
-                  >
-                    {renderEquipmentCell(it)}
-                    {renderStatusSelect(it)}
-                    <select
-                      value={it.driverId ?? ""}
-                      onChange={(e) => patch(it.equipmentId, { driverId: e.target.value ? Number(e.target.value) : null })}
-                      style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4 }}
-                      aria-label="Driver"
-                    >
-                      <option value="">Unassigned</option>
-                      {driverLookup.map((d) => (
-                        <option key={d.id} value={d.id}>{d.name}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="date"
-                      value={it.scheduledDeliveryDate}
-                      onChange={(e) => patch(it.equipmentId, { scheduledDeliveryDate: e.target.value })}
-                      style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, fontFeatureSettings: '"tnum"' }}
-                      aria-label="Scheduled delivery date"
-                    />
-                    {renderCompletedInput(it)}
-                    <DoorTagStepper
-                      value={it.doorTagCount}
-                      onChange={(next) => patch(it.equipmentId, { doorTagCount: next })}
-                    />
-                  </div>
-                );
-              }
-              // 4-col row for items in a real / pending trip — Driver +
-              // Scheduled inherited from the trip header above. "Move"
-              // link ejects this single item back to Unassigned so the
-              // user can re-route it without disturbing the rest.
-              return (
+              {group.itemList.map((it) => (
                 <div
                   key={it.equipmentId}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: tripItemCols,
+                    gridTemplateColumns: unassignedItemCols,
                     gap: 8,
                     padding: "8px 10px",
                     background: "#f6f9fc",
@@ -1506,34 +1383,221 @@ function PerItemDrivers({
                 >
                   {renderEquipmentCell(it)}
                   {renderStatusSelect(it)}
+                  <select
+                    value={it.driverId ?? ""}
+                    onChange={(e) => patch(it.equipmentId, { driverId: e.target.value ? Number(e.target.value) : null })}
+                    style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4 }}
+                    aria-label="Driver"
+                  >
+                    <option value="">Unassigned</option>
+                    {driverLookup.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    value={it.scheduledDeliveryDate}
+                    onChange={(e) => patch(it.equipmentId, { scheduledDeliveryDate: e.target.value })}
+                    style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, fontFeatureSettings: '"tnum"' }}
+                    aria-label="Scheduled delivery date"
+                  />
                   {renderCompletedInput(it)}
                   <DoorTagStepper
                     value={it.doorTagCount}
                     onChange={(next) => patch(it.equipmentId, { doorTagCount: next })}
                   />
-                  <button
-                    type="button"
-                    onClick={() => ejectFromTrip(it.equipmentId)}
-                    title="Move this item to its own delivery — clears its driver and scheduled date."
-                    style={{
-                      padding: "4px 8px",
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: "#64748d",
-                      background: "transparent",
-                      border: "1px solid #e5edf5",
-                      borderRadius: 4,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = "#4434d4"; e.currentTarget.style.borderColor = "rgba(83,58,253,0.3)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = "#64748d"; e.currentTarget.style.borderColor = "#e5edf5"; }}
-                  >
-                    Move
-                  </button>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+          );
+        }
+
+        // Real / pending trip — render as a single delivery card with
+        // three stacked sections: trip header (driver+date), equipment
+        // list (just names + Move button for multi-item trips), and a
+        // single row of trip-level fields (Status, Completed, Door Tags).
+        // Steve 2026-06: one delivery = one set of fields, even when
+        // the truck carries multiple pieces of equipment.
+        return (
+          <div
+            key={group.key}
+            style={{
+              border: "1px solid #e5edf5",
+              borderLeft: "3px solid rgba(83,58,253,0.4)",
+              borderRadius: 6,
+              background: "#fff",
+              overflow: "hidden",
+            }}
+          >
+            {/* Trip header: Driver + Scheduled Date */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1fr) auto",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 12px",
+                background: "rgba(83,58,253,0.04)",
+                borderBottom: "1px solid #e5edf5",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <div style={tripCardHeaderLabelStyle}>Driver · this delivery</div>
+                <select
+                  value={rep.driverId ?? ""}
+                  onChange={(e) => patchTripGroup(group.key, { driverId: e.target.value ? Number(e.target.value) : null })}
+                  style={{ padding: "6px 8px", fontSize: 13, fontWeight: 500, color: "#061b31", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4 }}
+                  aria-label="Trip driver"
+                >
+                  <option value="">Unassigned</option>
+                  {driverLookup.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <div style={tripCardHeaderLabelStyle}>Scheduled Delivery Date</div>
+                <input
+                  type="date"
+                  value={rep.scheduledDeliveryDate}
+                  onChange={(e) => patchTripGroup(group.key, { scheduledDeliveryDate: e.target.value })}
+                  style={{ padding: "6px 8px", fontSize: 13, color: "#061b31", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, fontFeatureSettings: '"tnum"' }}
+                  aria-label="Trip scheduled delivery date"
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "end", paddingBottom: 4 }}>
+                <span style={{ fontSize: 11, color: "#64748d", whiteSpace: "nowrap" }}>
+                  {driverName}{rep.scheduledDeliveryDate ? ` · ${new Date(rep.scheduledDeliveryDate + "T00:00:00.000Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })}` : " · Unscheduled"}
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "#64748d",
+                    background: "#fff",
+                    border: "1px solid #e5edf5",
+                    borderRadius: 999,
+                    padding: "1px 7px",
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {count} {count === 1 ? "item" : "items"}
+                </span>
+              </div>
+            </div>
+
+            {/* Equipment list: equipment names only. Move button per
+                item appears on multi-item trips so the dispatcher can
+                pluck one item out without disturbing the rest. On
+                solo trips there's nothing to pluck — Move is hidden. */}
+            <div style={{ padding: "10px 12px", borderBottom: "1px solid #e5edf5" }}>
+              <div style={{ ...tripCardHeaderLabelStyle, marginBottom: 6 }}>
+                Equipment in this delivery
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {group.itemList.map((it) => {
+                  const eq = equipmentLookup.find((e) => e.id === it.equipmentId);
+                  const label = eq
+                    ? `${eq.name}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`
+                    : `Unknown equipment (${it.equipmentId.slice(0, 8)})`;
+                  return (
+                    <div
+                      key={it.equipmentId}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1fr) auto",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "6px 10px",
+                        background: "#f6f9fc",
+                        border: "1px solid #e5edf5",
+                        borderRadius: 4,
+                      }}
+                    >
+                      <div style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: "#061b31" }}>
+                          {label}
+                        </span>
+                        {eq?.abbreviation && (
+                          <span style={{ fontSize: 11, color: "#64748d", fontFamily: "SourceCodePro, ui-monospace, monospace" }}>
+                            {eq.abbreviation}{eq.hcpcsCode ? ` · ${eq.hcpcsCode}` : ""}
+                          </span>
+                        )}
+                      </div>
+                      {isMultiItem ? (
+                        <button
+                          type="button"
+                          onClick={() => ejectFromTrip(it.equipmentId)}
+                          title="Pluck this item out of this delivery — clears its driver and scheduled date so you can route it separately."
+                          style={{
+                            padding: "3px 8px",
+                            fontSize: 11,
+                            fontWeight: 500,
+                            color: "#64748d",
+                            background: "transparent",
+                            border: "1px solid #e5edf5",
+                            borderRadius: 4,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = "#4434d4"; e.currentTarget.style.borderColor = "rgba(83,58,253,0.3)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = "#64748d"; e.currentTarget.style.borderColor = "#e5edf5"; }}
+                        >
+                          Move
+                        </button>
+                      ) : (
+                        <span />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Trip-level fields: one Status / Completed Date / Door
+                Tags for the whole delivery. Edits propagate to every
+                item in the trip (the data model still stores them
+                per-item; this is just collapsing the UI). */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr) 120px",
+                gap: 12,
+                padding: "10px 12px",
+                background: "#fff",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <div style={tripFieldHeaderStyle}>Equipment Delivery Status</div>
+                <select
+                  value={rep.deliveryStatus}
+                  onChange={(e) => patchTripGroup(group.key, { deliveryStatus: e.target.value as OutcomeStatus })}
+                  style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4 }}
+                  aria-label="Trip equipment delivery status"
+                >
+                  {pickerValuesFor(rep.deliveryStatus).map((s) => (
+                    <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <div style={tripFieldHeaderStyle}>Completed Date</div>
+                <input
+                  type="date"
+                  value={rep.completedAt}
+                  onChange={(e) => patchTripGroup(group.key, { completedAt: e.target.value })}
+                  style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, fontFeatureSettings: '"tnum"' }}
+                  aria-label="Trip completed date"
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <div style={tripFieldHeaderStyle}>Door Tags</div>
+                <DoorTagStepper
+                  value={rep.doorTagCount}
+                  onChange={(next) => patchTripGroup(group.key, { doorTagCount: next })}
+                />
+              </div>
+            </div>
           </div>
         );
       })}
