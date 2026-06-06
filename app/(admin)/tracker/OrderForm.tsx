@@ -1182,18 +1182,21 @@ function PerItemDrivers({
   driverLookup: Lookups["dispatchers"];
   onChange: (items: Array<{ equipmentId: string; quantity: number; driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>) => void;
 }) {
-  // Patch by equipmentId (stable across re-renders) instead of index —
-  // we sort the visible items by trip below, so render-order index ≠
-  // items-array index.
+  // Patch a single item by equipmentId.
   function patch(equipmentId: string, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string; completedAt: string; deliveryStatus: OutcomeStatus; doorTagCount: number }>) {
     onChange(items.map((it) => (it.equipmentId === equipmentId ? { ...it, ...p } : it)));
   }
-  // Grid: Equipment | Status | Driver | Scheduled | Completed | Door Tags.
-  // Status sits second so a CSR scanning a row reads "this piece of
-  // equipment is in state X, owned by driver Y, scheduled for Z, completed
-  // on W" left-to-right. Used by header + each row so column boundaries
-  // always line up.
-  const gridCols = "minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 110px";
+  // Propagate a driver/date change from a trip header to every item in
+  // that trip (Steve 2026-06: same driver delivering 2 items = 1 trip).
+  function patchTripGroup(tripKey: string, p: Partial<{ driverId: number | null; scheduledDeliveryDate: string }>) {
+    onChange(items.map((it) => (keyForItem(it) === tripKey ? { ...it, ...p } : it)));
+  }
+  // Move a single item out of a multi-item trip — clear its driver +
+  // scheduled date so it lands in the Unassigned bucket where the user
+  // can re-assign it without disturbing the rest of the trip.
+  function ejectFromTrip(equipmentId: string) {
+    patch(equipmentId, { driverId: null, scheduledDeliveryDate: "" });
+  }
   // Always include the row's current status in the picker — handles legacy
   // values (HELD_FOR_AUTH, DOOR_TAG, etc.) that were dropped from the
   // picker list but still exist on rows in the DB.
@@ -1203,231 +1206,334 @@ function PerItemDrivers({
       : [current, ...DELIVERY_STATUS_PICKER_VALUES];
   }
 
-  // Group items by (driverId, scheduledDeliveryDate) so the dispatcher
-  // can see at a glance "Robert · Thu Jun 6 — bed, commode" as one trip
-  // (Steve 2026-06). Per-item fields stay editable; editing one row's
-  // driver or date silently moves it into the matching trip on next
-  // render. Three bucket types:
-  //   - real trip: both driver + scheduledDate set
-  //   - tentative: driver set, no date yet (or vice versa)
-  //   - unassigned: no driver
-  type TripKey = string;
-  function tripKey(it: typeof items[number]): TripKey {
+  // Trip key: groups items by (driverId, scheduledDate). Items missing
+  // a driver bucket all under "__unassigned__" and render with inline
+  // driver+date pickers per row (no collapse — there's nothing to share
+  // yet). Items with a driver but no date land in pending::<driverId>.
+  // Items with both are in a real trip::<driverId>::<date>.
+  function keyForItem(it: typeof items[number]): string {
     if (it.driverId == null) return "__unassigned__";
     if (!it.scheduledDeliveryDate) return `pending::${it.driverId}`;
     return `trip::${it.driverId}::${it.scheduledDeliveryDate}`;
   }
-  // Stable sort: trips with driver+date first (ordered by date, then
-  // driver name), then tentative, then unassigned. Within a trip items
-  // keep their original insertion order so adding equipment doesn't
-  // shuffle the existing rows.
-  const sortBuckets = items.map((it, idx) => {
-    let bucket: number;
-    if (it.driverId == null) bucket = 2;
-    else if (!it.scheduledDeliveryDate) bucket = 1;
-    else bucket = 0;
-    return { it, idx, bucket, key: tripKey(it) };
-  });
-  const sorted = sortBuckets
-    .slice()
-    .sort((a, b) => {
-      if (a.bucket !== b.bucket) return a.bucket - b.bucket;
-      if (a.key !== b.key) return a.key < b.key ? -1 : 1;
-      return a.idx - b.idx;
-    });
-  const tripCounts = new Map<TripKey, number>();
-  for (const s of sorted) tripCounts.set(s.key, (tripCounts.get(s.key) ?? 0) + 1);
-  // Walk sorted; emit a header whenever the trip key changes.
-  type RenderEntry =
-    | { kind: "header"; key: TripKey; label: string; count: number }
-    | { kind: "item"; it: typeof items[number] };
-  const entries: RenderEntry[] = [];
-  let prevKey: TripKey | null = null;
-  for (const s of sorted) {
-    if (s.key !== prevKey) {
-      let label: string;
-      if (s.it.driverId == null) {
-        label = "Unassigned";
-      } else {
-        const driverName = driverLookup.find((d) => d.id === s.it.driverId)?.name ?? `Driver #${s.it.driverId}`;
-        if (!s.it.scheduledDeliveryDate) {
-          label = `${driverName} · Unscheduled`;
-        } else {
-          const dateLabel = new Date(s.it.scheduledDeliveryDate + "T00:00:00.000Z").toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            timeZone: "UTC",
-          });
-          label = `${driverName} · ${dateLabel}`;
-        }
-      }
-      entries.push({ kind: "header", key: s.key, label, count: tripCounts.get(s.key) ?? 1 });
-      prevKey = s.key;
-    }
-    entries.push({ kind: "item", it: s.it });
+  function bucketForKey(k: string): 0 | 1 | 2 {
+    if (k === "__unassigned__") return 2;
+    if (k.startsWith("pending::")) return 1;
+    return 0;
   }
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: gridCols,
-          gap: 8,
-          padding: "0 10px",
-          fontSize: 11,
-          fontWeight: 500,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          color: "#64748d",
-        }}
-      >
-        <span>Equipment</span>
-        <span>Equipment Delivery Status</span>
-        <span>Driver</span>
-        <span>Scheduled Delivery Date</span>
-        <span>Completed Date</span>
-        <span>Door Tags</span>
+  // Group items into trips, preserving original order within each group.
+  const tripGroups: Array<{ key: string; bucket: 0 | 1 | 2; itemList: typeof items }> = (() => {
+    const groups = new Map<string, typeof items>();
+    for (const it of items) {
+      const k = keyForItem(it);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(it);
+    }
+    return Array.from(groups.entries())
+      .map(([key, itemList]) => ({ key, bucket: bucketForKey(key), itemList }))
+      .sort((a, b) => {
+        if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+        if (a.key !== b.key) return a.key < b.key ? -1 : 1;
+        return 0;
+      });
+  })();
+
+  // 4-col layout for items inside real / pending trips — driver and
+  // scheduled date live in the trip header above. The 6th column is a
+  // small "Move" link to eject the item from this trip.
+  const tripItemCols = "minmax(0, 1.6fr) minmax(0, 1.3fr) minmax(0, 1fr) 110px 70px";
+  // 6-col layout for unassigned items — they keep inline driver + date
+  // pickers because there's no trip yet to inherit from.
+  const unassignedItemCols = "minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 110px";
+
+  function renderEquipmentCell(it: typeof items[number]) {
+    const eq = equipmentLookup.find((e) => e.id === it.equipmentId);
+    const label = eq ? `${eq.name}${it.quantity > 1 ? ` ×${it.quantity}` : ""}` : `Unknown equipment (${it.equipmentId.slice(0, 8)})`;
+    return (
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: "#061b31", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {label}
+        </div>
+        {eq?.abbreviation && (
+          <div style={{ fontSize: 11, color: "#64748d", fontFamily: "SourceCodePro, ui-monospace, monospace" }}>
+            {eq.abbreviation}{eq.hcpcsCode ? ` · ${eq.hcpcsCode}` : ""}
+          </div>
+        )}
       </div>
-      {entries.map((entry) => {
-        if (entry.kind === "header") {
-          // Trip header — full-width strip above the items in this trip
-          // group. Multi-item trips ("Robert · Thu Jun 6 (2)") read as
-          // one delivery; solo items still get a header so the visual
-          // language is consistent.
-          return (
-            <div
-              key={`header::${entry.key}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 10px",
-                marginTop: 2,
-                fontSize: 11,
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: "#4434d4",
-                background: "rgba(83,58,253,0.04)",
-                borderLeft: "3px solid rgba(83,58,253,0.4)",
-                borderRadius: "4px 4px 0 0",
-              }}
-            >
-              <span>{entry.label}</span>
-              <span
+    );
+  }
+  function renderStatusSelect(it: typeof items[number]) {
+    return (
+      <select
+        value={it.deliveryStatus}
+        onChange={(e) => patch(it.equipmentId, { deliveryStatus: e.target.value as OutcomeStatus })}
+        style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4 }}
+        aria-label="Equipment delivery status"
+      >
+        {pickerValuesFor(it.deliveryStatus).map((s) => (
+          <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+        ))}
+      </select>
+    );
+  }
+  function renderCompletedInput(it: typeof items[number]) {
+    return (
+      <input
+        type="date"
+        value={it.completedAt}
+        onChange={(e) => patch(it.equipmentId, { completedAt: e.target.value })}
+        style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, fontFeatureSettings: '"tnum"' }}
+        aria-label="Completed date"
+      />
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {tripGroups.map((group) => {
+        // Reference values for the trip header. Items in a group share
+        // driverId + scheduledDate by definition; take them from the
+        // first item.
+        const rep = group.itemList[0];
+        const driverName = rep.driverId != null
+          ? (driverLookup.find((d) => d.id === rep.driverId)?.name ?? `Driver #${rep.driverId}`)
+          : "Unassigned";
+        const isUnassignedGroup = group.bucket === 2;
+        const count = group.itemList.length;
+
+        return (
+          <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {/* Trip header — for real / pending trips, holds editable
+                Driver + Scheduled Date inputs that propagate to every
+                item in the trip. For Unassigned, it's just a label. */}
+            {isUnassignedGroup ? (
+              <div
                 style={{
-                  fontSize: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
                   color: "#64748d",
-                  background: "#fff",
-                  border: "1px solid #e5edf5",
-                  borderRadius: 999,
-                  padding: "1px 7px",
-                  fontWeight: 500,
-                  letterSpacing: 0,
-                  textTransform: "none",
+                  background: "#f6f9fc",
+                  borderLeft: "3px solid #cbd5e1",
+                  borderRadius: "4px 4px 0 0",
                 }}
               >
-                {entry.count} {entry.count === 1 ? "item" : "items"}
-              </span>
-            </div>
-          );
-        }
-        const it = entry.it;
-        const eq = equipmentLookup.find((e) => e.id === it.equipmentId);
-        const label = eq ? `${eq.name}${it.quantity > 1 ? ` ×${it.quantity}` : ""}` : `Unknown equipment (${it.equipmentId.slice(0, 8)})`;
-        return (
-          <div
-            key={it.equipmentId}
-            style={{
-              display: "grid",
-              gridTemplateColumns: gridCols,
-              gap: 8,
-              padding: "8px 10px",
-              background: "#f6f9fc",
-              border: "1px solid #e5edf5",
-              borderRadius: 4,
-              alignItems: "center",
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#061b31", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {label}
+                <span>Unassigned</span>
+                <span style={{ fontSize: 10, color: "#64748d", background: "#fff", border: "1px solid #e5edf5", borderRadius: 999, padding: "1px 7px", fontWeight: 500, letterSpacing: 0, textTransform: "none" }}>
+                  {count} {count === 1 ? "item" : "items"}
+                </span>
+                <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400, letterSpacing: 0, textTransform: "none", marginLeft: 4 }}>
+                  Pick a driver per row to form a delivery.
+                </span>
               </div>
-              {eq?.abbreviation && (
-                <div style={{ fontSize: 11, color: "#64748d", fontFamily: "SourceCodePro, ui-monospace, monospace" }}>
-                  {eq.abbreviation}{eq.hcpcsCode ? ` · ${eq.hcpcsCode}` : ""}
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1fr) auto",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 10px",
+                  background: "rgba(83,58,253,0.04)",
+                  borderLeft: "3px solid rgba(83,58,253,0.4)",
+                  borderRadius: "4px 4px 0 0",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "#4434d4" }}>
+                    Driver · this delivery
+                  </div>
+                  <select
+                    value={rep.driverId ?? ""}
+                    onChange={(e) => patchTripGroup(group.key, { driverId: e.target.value ? Number(e.target.value) : null })}
+                    style={{ padding: "6px 8px", fontSize: 13, fontWeight: 500, color: "#061b31", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4 }}
+                    aria-label="Trip driver"
+                  >
+                    <option value="">Unassigned</option>
+                    {driverLookup.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
                 </div>
-              )}
-            </div>
-            <select
-              value={it.deliveryStatus}
-              onChange={(e) => patch(it.equipmentId, { deliveryStatus: e.target.value as OutcomeStatus })}
-              style={{
-                padding: "6px 8px",
-                fontSize: 13,
-                color: "#273951",
-                background: "#fff",
-                border: "1px solid #e5edf5",
-                borderRadius: 4,
-              }}
-              aria-label="Equipment delivery status"
-            >
-              {pickerValuesFor(it.deliveryStatus).map((s) => (
-                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-              ))}
-            </select>
-            <select
-              value={it.driverId ?? ""}
-              onChange={(e) => patch(it.equipmentId, { driverId: e.target.value ? Number(e.target.value) : null })}
-              style={{
-                padding: "6px 8px",
-                fontSize: 13,
-                color: "#273951",
-                background: "#fff",
-                border: "1px solid #e5edf5",
-                borderRadius: 4,
-              }}
-            >
-              <option value="">Unassigned</option>
-              {driverLookup.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={it.scheduledDeliveryDate}
-              onChange={(e) => patch(it.equipmentId, { scheduledDeliveryDate: e.target.value })}
-              style={{
-                padding: "6px 8px",
-                fontSize: 13,
-                color: "#273951",
-                background: "#fff",
-                border: "1px solid #e5edf5",
-                borderRadius: 4,
-                fontFeatureSettings: '"tnum"',
-              }}
-              aria-label="Scheduled delivery date"
-            />
-            <input
-              type="date"
-              value={it.completedAt}
-              onChange={(e) => patch(it.equipmentId, { completedAt: e.target.value })}
-              style={{
-                padding: "6px 8px",
-                fontSize: 13,
-                color: "#273951",
-                background: "#fff",
-                border: "1px solid #e5edf5",
-                borderRadius: 4,
-                fontFeatureSettings: '"tnum"',
-              }}
-              aria-label="Completed date"
-            />
-            <DoorTagStepper
-              value={it.doorTagCount}
-              onChange={(next) => patch(it.equipmentId, { doorTagCount: next })}
-            />
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "#4434d4" }}>
+                    Scheduled Delivery Date
+                  </div>
+                  <input
+                    type="date"
+                    value={rep.scheduledDeliveryDate}
+                    onChange={(e) => patchTripGroup(group.key, { scheduledDeliveryDate: e.target.value })}
+                    style={{ padding: "6px 8px", fontSize: 13, color: "#061b31", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, fontFeatureSettings: '"tnum"' }}
+                    aria-label="Trip scheduled delivery date"
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "end", paddingBottom: 4 }}>
+                  <span style={{ fontSize: 11, color: "#64748d", whiteSpace: "nowrap" }}>
+                    {driverName}{rep.scheduledDeliveryDate ? ` · ${new Date(rep.scheduledDeliveryDate + "T00:00:00.000Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })}` : " · Unscheduled"}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "#64748d",
+                      background: "#fff",
+                      border: "1px solid #e5edf5",
+                      borderRadius: 999,
+                      padding: "1px 7px",
+                      fontWeight: 500,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {count} {count === 1 ? "item" : "items"}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Items in this trip */}
+            {!isUnassignedGroup && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: tripItemCols,
+                  gap: 8,
+                  padding: "0 10px",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  color: "#64748d",
+                }}
+              >
+                <span>Equipment</span>
+                <span>Equipment Delivery Status</span>
+                <span>Completed Date</span>
+                <span>Door Tags</span>
+                <span></span>
+              </div>
+            )}
+            {isUnassignedGroup && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: unassignedItemCols,
+                  gap: 8,
+                  padding: "0 10px",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  color: "#64748d",
+                }}
+              >
+                <span>Equipment</span>
+                <span>Equipment Delivery Status</span>
+                <span>Driver</span>
+                <span>Scheduled Delivery Date</span>
+                <span>Completed Date</span>
+                <span>Door Tags</span>
+              </div>
+            )}
+
+            {group.itemList.map((it) => {
+              if (isUnassignedGroup) {
+                // Full 6-col row for unassigned items — Driver +
+                // Scheduled inline so user can assign without going to
+                // a trip header.
+                return (
+                  <div
+                    key={it.equipmentId}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: unassignedItemCols,
+                      gap: 8,
+                      padding: "8px 10px",
+                      background: "#f6f9fc",
+                      border: "1px solid #e5edf5",
+                      borderRadius: 4,
+                      alignItems: "center",
+                    }}
+                  >
+                    {renderEquipmentCell(it)}
+                    {renderStatusSelect(it)}
+                    <select
+                      value={it.driverId ?? ""}
+                      onChange={(e) => patch(it.equipmentId, { driverId: e.target.value ? Number(e.target.value) : null })}
+                      style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4 }}
+                      aria-label="Driver"
+                    >
+                      <option value="">Unassigned</option>
+                      {driverLookup.map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      value={it.scheduledDeliveryDate}
+                      onChange={(e) => patch(it.equipmentId, { scheduledDeliveryDate: e.target.value })}
+                      style={{ padding: "6px 8px", fontSize: 13, color: "#273951", background: "#fff", border: "1px solid #e5edf5", borderRadius: 4, fontFeatureSettings: '"tnum"' }}
+                      aria-label="Scheduled delivery date"
+                    />
+                    {renderCompletedInput(it)}
+                    <DoorTagStepper
+                      value={it.doorTagCount}
+                      onChange={(next) => patch(it.equipmentId, { doorTagCount: next })}
+                    />
+                  </div>
+                );
+              }
+              // 4-col row for items in a real / pending trip — Driver +
+              // Scheduled inherited from the trip header above. "Move"
+              // link ejects this single item back to Unassigned so the
+              // user can re-route it without disturbing the rest.
+              return (
+                <div
+                  key={it.equipmentId}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: tripItemCols,
+                    gap: 8,
+                    padding: "8px 10px",
+                    background: "#f6f9fc",
+                    border: "1px solid #e5edf5",
+                    borderRadius: 4,
+                    alignItems: "center",
+                  }}
+                >
+                  {renderEquipmentCell(it)}
+                  {renderStatusSelect(it)}
+                  {renderCompletedInput(it)}
+                  <DoorTagStepper
+                    value={it.doorTagCount}
+                    onChange={(next) => patch(it.equipmentId, { doorTagCount: next })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => ejectFromTrip(it.equipmentId)}
+                    title="Move this item to its own delivery — clears its driver and scheduled date."
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: "#64748d",
+                      background: "transparent",
+                      border: "1px solid #e5edf5",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = "#4434d4"; e.currentTarget.style.borderColor = "rgba(83,58,253,0.3)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "#64748d"; e.currentTarget.style.borderColor = "#e5edf5"; }}
+                  >
+                    Move
+                  </button>
+                </div>
+              );
+            })}
           </div>
         );
       })}
